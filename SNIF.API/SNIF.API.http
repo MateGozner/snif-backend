@@ -1,0 +1,6 @@
+@SNIF.API_HostAddress = http://localhost:5265
+
+GET {{SNIF.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
