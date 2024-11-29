@@ -17,9 +17,6 @@ namespace SNIF.Core.Entities
         }
 
         [Required]
-        public string OwnerId { get; set; } = null!;
-
-        [Required]
         [StringLength(100)]
         public string Name { get; set; } = null!;
 
@@ -50,5 +47,8 @@ namespace SNIF.Core.Entities
 
         // Navigation property
         public virtual User Owner { get; set; } = null!;
+
+        [Required]
+        public string OwnerId { get; set; } = null!;
     }
 }

@@ -51,7 +51,7 @@ namespace SNIF.API.Controllers
                 var user = new User
                 {
                     Email = createUserDto.Email,
-                    UserName = createUserDto.Email,
+                    UserName = createUserDto.Name,
                     Name = createUserDto.Name,
                     Location = location,
                     CreatedAt = DateTime.UtcNow
@@ -82,6 +82,38 @@ namespace SNIF.API.Controllers
 
                 throw;
             }
+        }
+
+        [HttpPost("login")]
+        public async Task<ActionResult<AuthResponseDto>> Login(LoginDto loginDto)
+        {
+            var user = await _userManager.FindByEmailAsync(loginDto.Email);
+
+            if (user == null)
+            {
+                return Unauthorized("Invalid email");
+            }
+
+            var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
+
+            if (!result.Succeeded)
+            {
+                return Unauthorized("Invalid password");
+            }
+
+            return new AuthResponseDto
+            {
+                Email = user.Email!,
+                Name = user.Name,
+                Token = _tokenService.CreateToken(user)
+            };
+        }
+
+        [HttpPost("logout")]
+        public async Task<ActionResult> Logout()
+        {
+            await _signInManager.SignOutAsync();
+            return NoContent();
         }
     }
 
