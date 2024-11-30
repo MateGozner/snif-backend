@@ -12,8 +12,8 @@ using SNIF.Infrastructure.Data;
 namespace SNIF.Infrastructure.Migrations
 {
     [DbContext(typeof(SNIFContext))]
-    [Migration("20241129111730_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20241129160058_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

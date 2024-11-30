@@ -1,4 +1,5 @@
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -7,6 +8,7 @@ using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
 using SNIF.Core.Models;
 using SNIF.Infrastructure.Data;
+using System.Security.Claims;
 
 namespace SNIF.API.Controllers
 {
@@ -14,106 +16,75 @@ namespace SNIF.API.Controllers
     [Route("api/[controller]")]
     public class UserController : ControllerBase
     {
-        private readonly UserManager<User> _userManager;
-        private readonly SignInManager<User> _signInManager;
-        private readonly ITokenService _tokenService;
+        private readonly IUserService _userService;
 
-        private readonly SNIFContext _context;
-
-        public UserController(UserManager<User> userManager, SignInManager<User> signInManager, ITokenService tokenService, SNIFContext context)
+        public UserController(IUserService userService)
         {
-            _userManager = userManager;
-            _signInManager = signInManager;
-            _tokenService = tokenService;
-            _context = context;
+            _userService = userService;
         }
         [HttpPost("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(CreateUserDto createUserDto)
         {
-            if (await _userManager.FindByEmailAsync(createUserDto.Email) != null)
+           try
             {
-                return BadRequest("Email already registered");
-            }
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
-
-            try
+                var user = await _userService.RegisterUserAsync(createUserDto);
+                return Ok(user);
+            } catch (UnauthorizedAccessException e)
             {
-                var location = new Location
-                {
-                    CreatedAt = DateTime.UtcNow
-                    // Set other location properties as needed
-                };
-
-                _context.Locations.Add(location);
-                await _context.SaveChangesAsync();
-
-                var user = new User
-                {
-                    Email = createUserDto.Email,
-                    UserName = createUserDto.Name,
-                    Name = createUserDto.Name,
-                    Location = location,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                var result = await _userManager.CreateAsync(user, createUserDto.Password);
-
-                if (!result.Succeeded)
-                {
-                    await transaction.RollbackAsync();
-                    return BadRequest(result.Errors);
-                }
-                await transaction.CommitAsync();
-
-                return new AuthResponseDto
-                {
-                    Email = user.Email!,
-                    Name = user.Name,
-                    Token = _tokenService.CreateToken(user)
-                };
-            }
-            catch
-            {
-                if (transaction.GetDbTransaction().Connection != null)
-                {
-                    await transaction.RollbackAsync();
-                }
-
-                throw;
+                return Unauthorized(e.Message);
             }
         }
 
         [HttpPost("login")]
         public async Task<ActionResult<AuthResponseDto>> Login(LoginDto loginDto)
         {
-            var user = await _userManager.FindByEmailAsync(loginDto.Email);
-
-            if (user == null)
+            try
             {
-                return Unauthorized("Invalid email");
+                var user = await _userService.LoginUserAsync(loginDto);
+                return Ok(user);
             }
-
-            var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
-
-            if (!result.Succeeded)
+            catch (UnauthorizedAccessException e)
             {
-                return Unauthorized("Invalid password");
+                return Unauthorized(e.Message);
             }
-
-            return new AuthResponseDto
-            {
-                Email = user.Email!,
-                Name = user.Name,
-                Token = _tokenService.CreateToken(user)
-            };
         }
 
+        [Authorize]
         [HttpPost("logout")]
         public async Task<ActionResult> Logout()
         {
-            await _signInManager.SignOutAsync();
+            await _userService.LogoutUser();
             return NoContent();
+        }
+
+        [Authorize]
+        [HttpGet("profile/{id}")]
+        public async Task<ActionResult<UserDto>> GetProfileById(string id)
+        {
+            try
+            {
+                var profile = await _userService.GetUserProfileById(id);
+                return Ok(profile);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+        }
+
+        [Authorize]
+        [HttpGet("check-auth/{email}")]
+        public async Task<ActionResult<UserDto>> CheckAuthByEmail(string email)
+        {
+            try
+            {
+                var user = await _userService.IsUserLoggedInByEmail(email);
+                return Ok(user);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
         }
     }
 

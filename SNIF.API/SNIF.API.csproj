@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SNIF.Application\SNIF.Busniess.csproj" />
     <ProjectReference Include="..\SNIF.Core\SNIF.Core.csproj" />
     <ProjectReference Include="..\SNIF.Infrastructure\SNIF.Infrastructure.csproj" />
   </ItemGroup>
