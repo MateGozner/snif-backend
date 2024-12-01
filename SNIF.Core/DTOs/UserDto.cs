@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 using SNIF.Core.Models;
 
 namespace SNIF.Core.DTOs
@@ -14,6 +15,7 @@ namespace SNIF.Core.DTOs
         public UserPreferences? Preferences { get; init; }
         public DateTime CreatedAt { get; init; }
         public DateTime? UpdatedAt { get; init; }
+        public string? ProfilePicturePath { get; init; }
     }
 
     public record CreateUserDto
@@ -33,13 +35,11 @@ namespace SNIF.Core.DTOs
         public LocationDto? Location { get; init; }
     }
 
-    public record UpdateUserDto
+    public record UpdateUserPersonalInfoDto
     {
         [StringLength(50)]
         public string? Name { get; init; }
-        public LocationDto? Location { get; init; }
-        public UserPreferences? Preferences { get; init; }
-        public BreederVerification? BreederVerification { get; init; }
+        public IFormFile? ProfilePicture { get; init; }
     }
 
     public record LoginDto

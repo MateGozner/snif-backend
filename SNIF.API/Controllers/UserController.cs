@@ -17,19 +17,22 @@ namespace SNIF.API.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
+        private readonly IWebHostEnvironment _environment;
 
-        public UserController(IUserService userService)
+        public UserController(IUserService userService, IWebHostEnvironment environment)
         {
             _userService = userService;
+            _environment = environment;
         }
         [HttpPost("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(CreateUserDto createUserDto)
         {
-           try
+            try
             {
                 var user = await _userService.RegisterUserAsync(createUserDto);
                 return Ok(user);
-            } catch (UnauthorizedAccessException e)
+            }
+            catch (UnauthorizedAccessException e)
             {
                 return Unauthorized(e.Message);
             }
@@ -57,7 +60,6 @@ namespace SNIF.API.Controllers
             return NoContent();
         }
 
-        [Authorize]
         [HttpGet("profile/{id}")]
         public async Task<ActionResult<UserDto>> GetProfileById(string id)
         {
@@ -85,6 +87,32 @@ namespace SNIF.API.Controllers
             {
                 return Unauthorized(ex.Message);
             }
+        }
+
+        [HttpPut("profile/{id}")]
+        public async Task<ActionResult<UserDto>> UpdateProfile(string id, UpdateUserPersonalInfoDto updateUserPersonalInfoDto)
+        {
+            try
+            {
+                var updatedProfile = await _userService.UpdateUserPersonalInfo(id, updateUserPersonalInfoDto);
+                return Ok(updatedProfile);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+        }
+
+        [HttpGet("profile-picture/{filename}")]
+        public IActionResult GetProfilePicture(string fileName)
+        {
+            var path = Path.Combine(_environment.WebRootPath, "uploads", "profiles", fileName);
+            if (!System.IO.File.Exists(path))
+            {
+                return NotFound();
+            }
+
+            return PhysicalFile(path, "image/jpeg");
         }
     }
 

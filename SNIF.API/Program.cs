@@ -3,11 +3,19 @@ using SNIF.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddSwaggerServices();
 builder.Services.AddIdentityServices(builder.Configuration);
+
+
+// Configure static files
+var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+Directory.CreateDirectory(webRootPath);
+Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "profiles"));
+builder.WebHost.UseWebRoot(webRootPath);
 
 // Configure PostgreSQL
 builder.Services.AddDbContext<SNIFContext>(options =>
@@ -37,5 +45,7 @@ app.UseCors("AllowedOrigins");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+app.UseStaticFiles();
 
 app.Run();

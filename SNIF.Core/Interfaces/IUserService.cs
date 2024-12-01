@@ -14,5 +14,6 @@ namespace SNIF.Core.Interfaces
         Task LogoutUser();
         Task<UserDto> IsUserLoggedInByEmail(string email);
         Task<UserDto> GetUserProfileById(string userId);
+        Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserPersonalInfoDto updateUserPersonalInfoDto);
     }
 }

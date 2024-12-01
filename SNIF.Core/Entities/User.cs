@@ -17,8 +17,9 @@ namespace SNIF.Core.Entities
         public virtual ICollection<Pet> Pets { get; set; }
         public BreederVerification? BreederVerification { get; set; }
         public UserPreferences? Preferences { get; set; }
-        
+
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public string? ProfilePicturePath { get; set; }
     }
 }

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
@@ -20,13 +21,15 @@ namespace SNIF.Busniess.Services
         private readonly SignInManager<User> _signInManager;
         private readonly UserManager<User> _userManager;
         private readonly SNIFContext _context;
+        private readonly IWebHostEnvironment _environment;
 
-        public UserService(ITokenService tokenService, SignInManager<User> signInManager, UserManager<User> userManager, SNIFContext context)
+        public UserService(ITokenService tokenService, SignInManager<User> signInManager, UserManager<User> userManager, SNIFContext context, IWebHostEnvironment environment)
         {
             _tokenService = tokenService;
             _signInManager = signInManager;
             _userManager = userManager;
             _context = context;
+            _environment = environment;
         }
 
         public async Task<AuthResponseDto> RegisterUserAsync(CreateUserDto createUserDto)
@@ -120,7 +123,9 @@ namespace SNIF.Busniess.Services
                 BreederVerification = user.BreederVerification,
                 Preferences = user.Preferences,
                 CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt
+                UpdatedAt = user.UpdatedAt,
+                ProfilePicturePath = user.ProfilePicturePath != null ?
+                    $"/api/user/profile-picture/{Path.GetFileName(user.ProfilePicturePath)}" : null
             };
         }
 
@@ -192,6 +197,76 @@ namespace SNIF.Busniess.Services
             await _signInManager.SignOutAsync();
         }
 
+        public async Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserPersonalInfoDto updateUserPersonalInfoDto)
+        {
+            if (string.IsNullOrEmpty(_environment.WebRootPath))
+            {
+                throw new InvalidOperationException("WebRootPath is not configured");
+            }
+
+            var user = await _userManager.Users
+                .Include(u => u.Location)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+            {
+                throw new KeyNotFoundException("User not found");
+            }
+
+            if (!string.IsNullOrEmpty(updateUserPersonalInfoDto.Name))
+            {
+                user.Name = updateUserPersonalInfoDto.Name;
+            }
+
+            if (updateUserPersonalInfoDto.ProfilePicture != null)
+            {
+                // Delete old profile picture if exists
+                if (!string.IsNullOrEmpty(user.ProfilePicturePath))
+                {
+                    var oldPath = Path.Combine(_environment.WebRootPath, user.ProfilePicturePath);
+                    if (File.Exists(oldPath))
+                    {
+                        File.Delete(oldPath);
+                    }
+                }
+
+                // Save new profile picture
+                var fileName = $"{Guid.NewGuid()}{Path.GetExtension(updateUserPersonalInfoDto.ProfilePicture.FileName)}";
+                var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "profiles");
+                Directory.CreateDirectory(uploadPath);
+                var filePath = Path.Combine(uploadPath, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await updateUserPersonalInfoDto.ProfilePicture.CopyToAsync(stream);
+                }
+
+                user.ProfilePicturePath = Path.Combine("uploads", "profiles", fileName);
+            }
+
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return new UserDto
+            {
+                Id = user.Id,
+                Email = user.Email!,
+                Name = user.Name,
+                ProfilePicturePath = user.ProfilePicturePath != null ?
+                    $"/api/user/profile-picture/{Path.GetFileName(user.ProfilePicturePath)}" : null,
+                Location = new LocationDto
+                {
+                    Latitude = user.Location.Latitude,
+                    Longitude = user.Location.Longitude,
+                    Address = user.Location.Address,
+                    City = user.Location.City,
+                    Country = user.Location.Country
+                },
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt
+            };
+        }
+
         public async Task<UserDto> UpdateUserLocation(string userId, LocationDto locationDto)
         {
             var user = await _userManager.Users
@@ -250,7 +325,9 @@ namespace SNIF.Busniess.Services
                     Country = user.Location.Country
                 },
                 CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt
+                UpdatedAt = user.UpdatedAt,
+                ProfilePicturePath = user.ProfilePicturePath != null ?
+                    $"/api/user/profile-picture/{Path.GetFileName(user.ProfilePicturePath)}" : null
             };
         }
     }
