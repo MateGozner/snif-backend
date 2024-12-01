@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
@@ -41,12 +42,17 @@ namespace SNIF.Busniess.Services
             {
                 var location = new Location
                 {
+                    Latitude = createUserDto.Location.Latitude,
+                    Longitude = createUserDto.Location.Longitude,
+                    Address = createUserDto.Location.Address,
+                    City = createUserDto.Location.City,
+                    Country = createUserDto.Location.Country,
                     CreatedAt = DateTime.UtcNow
-                    // Set other location properties as needed
                 };
 
                 _context.Locations.Add(location);
                 await _context.SaveChangesAsync();
+
                 var user = new User
                 {
                     Email = createUserDto.Email,
@@ -65,9 +71,11 @@ namespace SNIF.Busniess.Services
                 await transaction.CommitAsync();
                 return new AuthResponseDto
                 {
+                    Id = user.Id,
                     Email = user.Email!,
                     Name = user.Name,
-                    Token = _tokenService.CreateToken(user)
+                    Token = _tokenService.CreateToken(user),
+                    CreatedAt = user.CreatedAt
                 };
             }
             catch
@@ -79,22 +87,40 @@ namespace SNIF.Busniess.Services
 
         public async Task<UserDto> GetUserProfileById(string userId)
         {
-            var user = await _userManager.FindByIdAsync(userId);
+            var user = await _userManager.Users
+            .Include(u => u.Location)
+            .Include(u => u.Pets)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
             if (user == null)
             {
                 throw new Exception("User not found");
             }
 
-            if (user.Location == null)
-            {
-                throw new Exception("User location not found");
-            }
-
             return new UserDto
             {
+                Id = user.Id,
                 Email = user.Email!,
                 Name = user.Name,
-                Location = user.Location
+                Location = user.Location == null ? null : new LocationDto
+                {
+                    Latitude = user.Location.Latitude,
+                    Longitude = user.Location.Longitude,
+                    Address = user.Location.Address,
+                    City = user.Location.City,
+                    Country = user.Location.Country
+                },
+                Pets = user.Pets.Select(p => new PetDto
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Species = p.Species,
+                    Breed = p.Breed
+                }).ToList(),
+                BreederVerification = user.BreederVerification,
+                Preferences = user.Preferences,
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt
             };
         }
 
@@ -122,13 +148,22 @@ namespace SNIF.Busniess.Services
             {
                 Email = user.Email!,
                 Name = user.Name,
-                Location = user.Location
+                Location = user.Location == null ? null : new LocationDto
+                {
+                    Latitude = user.Location.Latitude,
+                    Longitude = user.Location.Longitude,
+                    Address = user.Location.Address,
+                    City = user.Location.City,
+                    Country = user.Location.Country
+                },
             };
         }
 
-        public Task<AuthResponseDto> LoginUserAsync(LoginDto loginDto)
+        public async Task<AuthResponseDto> LoginUserAsync(LoginDto loginDto)
         {
-            var user = _userManager.FindByEmailAsync(loginDto.Email).Result;
+            var user = await _userManager.Users
+                .Include(u => u.Location)
+                .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
             if (user == null)
             {
                 throw new UnauthorizedAccessException("Invalid email");
@@ -140,17 +175,83 @@ namespace SNIF.Busniess.Services
                 throw new UnauthorizedAccessException("Invalid password");
             }
 
-            return Task.FromResult(new AuthResponseDto
+            await UpdateUserLocation(user.Id, loginDto.Location);
+
+            return new AuthResponseDto
             {
+                Id = user.Id,
                 Email = user.Email!,
                 Name = user.Name,
-                Token = _tokenService.CreateToken(user)
-            });
+                Token = _tokenService.CreateToken(user),
+                CreatedAt = user.CreatedAt
+            };
         }
 
         public async Task LogoutUser()
         {
             await _signInManager.SignOutAsync();
+        }
+
+        public async Task<UserDto> UpdateUserLocation(string userId, LocationDto locationDto)
+        {
+            var user = await _userManager.Users
+                .Include(u => u.Location)  // Include Location
+                .FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null)
+            {
+                throw new KeyNotFoundException("User not found");
+            }
+
+            if (user.Location == null)
+            {
+                var newLocation = new Location
+                {
+                    Latitude = locationDto.Latitude,
+                    Longitude = locationDto.Longitude,
+                    Address = locationDto.Address,
+                    City = locationDto.City,
+                    Country = locationDto.Country,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.Locations.Add(newLocation);
+                user.Location = newLocation;
+            }
+            else
+            {
+                if (user.Location.Latitude != locationDto.Latitude ||
+                    user.Location.Longitude != locationDto.Longitude ||
+                    user.Location.Address != locationDto.Address ||
+                    user.Location.City != locationDto.City ||
+                    user.Location.Country != locationDto.Country)
+                {
+                    user.Location.Latitude = locationDto.Latitude;
+                    user.Location.Longitude = locationDto.Longitude;
+                    user.Location.Address = locationDto.Address;
+                    user.Location.City = locationDto.City;
+                    user.Location.Country = locationDto.Country;
+                    user.Location.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            return new UserDto
+            {
+                Id = user.Id,
+                Email = user.Email!,
+                Name = user.Name,
+                Location = new LocationDto
+                {
+                    Latitude = user.Location.Latitude,
+                    Longitude = user.Location.Longitude,
+                    Address = user.Location.Address,
+                    City = user.Location.City,
+                    Country = user.Location.Country
+                },
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt
+            };
         }
     }
 }
