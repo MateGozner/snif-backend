@@ -12,7 +12,7 @@ namespace SNIF.Core.DTOs
         public LocationDto? Location { get; init; }
         public ICollection<PetDto> Pets { get; init; } = new List<PetDto>();
         public BreederVerification? BreederVerification { get; init; }
-        public UserPreferences? Preferences { get; init; }
+        public PreferencesDto? Preferences { get; init; }
         public DateTime CreatedAt { get; init; }
         public DateTime? UpdatedAt { get; init; }
         public string? ProfilePicturePath { get; init; }

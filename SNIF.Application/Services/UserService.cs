@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Hosting;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SNIF.Core.DTOs;
@@ -22,16 +24,17 @@ namespace SNIF.Busniess.Services
         private readonly UserManager<User> _userManager;
         private readonly SNIFContext _context;
         private readonly IWebHostEnvironment _environment;
+        private readonly IMapper _mapper;
 
-        public UserService(ITokenService tokenService, SignInManager<User> signInManager, UserManager<User> userManager, SNIFContext context, IWebHostEnvironment environment)
+        public UserService(ITokenService tokenService, SignInManager<User> signInManager, UserManager<User> userManager, SNIFContext context, IWebHostEnvironment environment, IMapper mapper)
         {
             _tokenService = tokenService;
             _signInManager = signInManager;
             _userManager = userManager;
             _context = context;
             _environment = environment;
+            _mapper = mapper;
         }
-
         public async Task<AuthResponseDto> RegisterUserAsync(CreateUserDto createUserDto)
         {
             if (await _userManager.FindByEmailAsync(createUserDto.Email) != null)
@@ -43,15 +46,8 @@ namespace SNIF.Busniess.Services
 
             try
             {
-                var location = new Location
-                {
-                    Latitude = createUserDto.Location.Latitude,
-                    Longitude = createUserDto.Location.Longitude,
-                    Address = createUserDto.Location.Address,
-                    City = createUserDto.Location.City,
-                    Country = createUserDto.Location.Country,
-                    CreatedAt = DateTime.UtcNow
-                };
+                var location = _mapper.Map<Location>(createUserDto.Location);
+                location.CreatedAt = DateTime.UtcNow;
 
                 _context.Locations.Add(location);
                 await _context.SaveChangesAsync();
@@ -72,14 +68,10 @@ namespace SNIF.Busniess.Services
                 }
 
                 await transaction.CommitAsync();
-                return new AuthResponseDto
-                {
-                    Id = user.Id,
-                    Email = user.Email!,
-                    Name = user.Name,
-                    Token = _tokenService.CreateToken(user),
-                    CreatedAt = user.CreatedAt
-                };
+
+                var authResponse = _mapper.Map<AuthResponseDto>(user)!;
+                authResponse = authResponse with { Token = _tokenService.CreateToken(user) };
+                return authResponse;
             }
             catch
             {
@@ -87,109 +79,59 @@ namespace SNIF.Busniess.Services
                 throw;
             }
         }
-
         public async Task<UserDto> GetUserProfileById(string userId)
         {
             var user = await _userManager.Users
-            .Include(u => u.Location)
-            .Include(u => u.Pets)
-            .FirstOrDefaultAsync(u => u.Id == userId);
-
-            if (user == null)
-            {
-                throw new Exception("User not found");
-            }
-
-            return new UserDto
-            {
-                Id = user.Id,
-                Email = user.Email!,
-                Name = user.Name,
-                Location = user.Location == null ? null : new LocationDto
-                {
-                    Latitude = user.Location.Latitude,
-                    Longitude = user.Location.Longitude,
-                    Address = user.Location.Address,
-                    City = user.Location.City,
-                    Country = user.Location.Country
-                },
-                Pets = user.Pets.Select(p => new PetDto
-                {
-                    Id = p.Id,
-                    Name = p.Name,
-                    Species = p.Species,
-                    Breed = p.Breed
-                }).ToList(),
-                BreederVerification = user.BreederVerification,
-                Preferences = user.Preferences,
-                CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt,
-                ProfilePicturePath = user.ProfilePicturePath != null ?
-                    $"/api/user/profile-picture/{Path.GetFileName(user.ProfilePicturePath)}" : null
-            };
+                .Include(u => u.Location)
+                .Include(u => u.Pets)
+                .Include(u => u.Preferences)
+                    .ThenInclude(p => p.NotificationSettings)
+                .FirstOrDefaultAsync(u => u.Id == userId) ?? throw new KeyNotFoundException("User not found");
+            var userDto = _mapper.Map<UserDto>(user);
+            return userDto ?? throw new InvalidOperationException("Failed to map user to DTO");
         }
 
         public async Task<UserDto> IsUserLoggedInByEmail(string email)
         {
-            var user = await _userManager.FindByEmailAsync(email);
+            var user = await _userManager.Users
+                .Include(u => u.Location)
+                .Include(u => u.Preferences)
+                .FirstOrDefaultAsync(u => u.Email == email);
+
             if (user == null)
-            {
                 throw new UnauthorizedAccessException("User not found");
-            }
 
             var isSignedIn = _signInManager.IsSignedIn(new ClaimsPrincipal(
-                new ClaimsIdentity(new Claim[]
-                {
-                    new Claim(ClaimTypes.Email, email)
-                })
+                new ClaimsIdentity(new[] { new Claim(ClaimTypes.Email, email) })
             ));
 
             if (!isSignedIn)
-            {
                 throw new UnauthorizedAccessException("User is not logged in");
-            }
 
-            return new UserDto
-            {
-                Email = user.Email!,
-                Name = user.Name,
-                Location = user.Location == null ? null : new LocationDto
-                {
-                    Latitude = user.Location.Latitude,
-                    Longitude = user.Location.Longitude,
-                    Address = user.Location.Address,
-                    City = user.Location.City,
-                    Country = user.Location.Country
-                },
-            };
+            var userDto = _mapper.Map<UserDto>(user);
+            return userDto ?? throw new InvalidOperationException("Failed to map user to DTO");
         }
+
 
         public async Task<AuthResponseDto> LoginUserAsync(LoginDto loginDto)
         {
             var user = await _userManager.Users
                 .Include(u => u.Location)
                 .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
+
             if (user == null)
-            {
                 throw new UnauthorizedAccessException("Invalid email");
-            }
 
-            var result = _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false).Result;
+            var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
             if (!result.Succeeded)
-            {
                 throw new UnauthorizedAccessException("Invalid password");
-            }
 
-            await UpdateUserLocation(user.Id, loginDto.Location);
+            if (loginDto.Location != null)
+                await UpdateUserLocation(user.Id, loginDto.Location);
 
-            return new AuthResponseDto
-            {
-                Id = user.Id,
-                Email = user.Email!,
-                Name = user.Name,
-                Token = _tokenService.CreateToken(user),
-                CreatedAt = user.CreatedAt
-            };
+            var authResponse = _mapper.Map<AuthResponseDto>(user)!;
+            authResponse = authResponse with { Token = _tokenService.CreateToken(user) };
+            return authResponse;
         }
 
         public async Task LogoutUser()
@@ -200,135 +142,109 @@ namespace SNIF.Busniess.Services
         public async Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserPersonalInfoDto updateUserPersonalInfoDto)
         {
             if (string.IsNullOrEmpty(_environment.WebRootPath))
-            {
                 throw new InvalidOperationException("WebRootPath is not configured");
-            }
 
             var user = await _userManager.Users
                 .Include(u => u.Location)
+                .Include(u => u.Pets)
+                .Include(u => u.Preferences)
+                    .ThenInclude(p => p.NotificationSettings)
                 .FirstOrDefaultAsync(u => u.Id == userId);
 
             if (user == null)
-            {
                 throw new KeyNotFoundException("User not found");
-            }
 
             if (!string.IsNullOrEmpty(updateUserPersonalInfoDto.Name))
-            {
                 user.Name = updateUserPersonalInfoDto.Name;
-            }
 
             if (updateUserPersonalInfoDto.ProfilePicture != null)
             {
-                // Delete old profile picture if exists
-                if (!string.IsNullOrEmpty(user.ProfilePicturePath))
-                {
-                    var oldPath = Path.Combine(_environment.WebRootPath, user.ProfilePicturePath);
-                    if (File.Exists(oldPath))
-                    {
-                        File.Delete(oldPath);
-                    }
-                }
-
-                // Save new profile picture
-                var fileName = $"{Guid.NewGuid()}{Path.GetExtension(updateUserPersonalInfoDto.ProfilePicture.FileName)}";
-                var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "profiles");
-                Directory.CreateDirectory(uploadPath);
-                var filePath = Path.Combine(uploadPath, fileName);
-
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await updateUserPersonalInfoDto.ProfilePicture.CopyToAsync(stream);
-                }
-
-                user.ProfilePicturePath = Path.Combine("uploads", "profiles", fileName);
+                await UpdateProfilePicture(user, updateUserPersonalInfoDto.ProfilePicture);
             }
 
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            return new UserDto
+            return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
+        }
+
+
+        private async Task UpdateProfilePicture(User user, IFormFile profilePicture)
+        {
+            if (!string.IsNullOrEmpty(user.ProfilePicturePath))
             {
-                Id = user.Id,
-                Email = user.Email!,
-                Name = user.Name,
-                ProfilePicturePath = user.ProfilePicturePath != null ?
-                    $"/api/user/profile-picture/{Path.GetFileName(user.ProfilePicturePath)}" : null,
-                Location = new LocationDto
+                var oldPath = Path.Combine(_environment.WebRootPath, user.ProfilePicturePath);
+                if (File.Exists(oldPath))
+                    File.Delete(oldPath);
+            }
+
+            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(profilePicture.FileName)}";
+            var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "profiles");
+            Directory.CreateDirectory(uploadPath);
+            var filePath = Path.Combine(uploadPath, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await profilePicture.CopyToAsync(stream);
+            }
+
+            user.ProfilePicturePath = Path.Combine("uploads", "profiles", fileName);
+        }
+
+        public async Task<UserDto> UpdateUserPreferences(string userId, UpdatePreferencesDto preferencesDto)
+        {
+            var user = await _userManager.Users
+                .Include(u => u.Location)
+                .Include(u => u.Preferences)
+                    .ThenInclude(p => p.NotificationSettings)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+                throw new KeyNotFoundException("User not found");
+
+            if (user.Preferences == null)
+            {
+                user.Preferences = _mapper.Map<UserPreferences>(preferencesDto);
+                if (user.Preferences != null)
                 {
-                    Latitude = user.Location.Latitude,
-                    Longitude = user.Location.Longitude,
-                    Address = user.Location.Address,
-                    City = user.Location.City,
-                    Country = user.Location.Country
-                },
-                CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt
-            };
+                    user.Preferences.UserId = userId;
+                }
+            }
+            else
+            {
+                _mapper.Map(preferencesDto, user.Preferences);
+            }
+
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
         }
 
         public async Task<UserDto> UpdateUserLocation(string userId, LocationDto locationDto)
         {
             var user = await _userManager.Users
-                .Include(u => u.Location)  // Include Location
+                .Include(u => u.Location)
                 .FirstOrDefaultAsync(u => u.Id == userId);
+
             if (user == null)
-            {
                 throw new KeyNotFoundException("User not found");
-            }
 
             if (user.Location == null)
             {
-                var newLocation = new Location
+                user.Location = _mapper.Map<Location>(locationDto);
+                if (user.Location != null)
                 {
-                    Latitude = locationDto.Latitude,
-                    Longitude = locationDto.Longitude,
-                    Address = locationDto.Address,
-                    City = locationDto.City,
-                    Country = locationDto.Country,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _context.Locations.Add(newLocation);
-                user.Location = newLocation;
+                    user.Location.CreatedAt = DateTime.UtcNow;
+                }
             }
             else
             {
-                if (user.Location.Latitude != locationDto.Latitude ||
-                    user.Location.Longitude != locationDto.Longitude ||
-                    user.Location.Address != locationDto.Address ||
-                    user.Location.City != locationDto.City ||
-                    user.Location.Country != locationDto.Country)
-                {
-                    user.Location.Latitude = locationDto.Latitude;
-                    user.Location.Longitude = locationDto.Longitude;
-                    user.Location.Address = locationDto.Address;
-                    user.Location.City = locationDto.City;
-                    user.Location.Country = locationDto.Country;
-                    user.Location.UpdatedAt = DateTime.UtcNow;
-                }
+                _mapper.Map(locationDto, user.Location);
             }
 
             await _context.SaveChangesAsync();
-
-            return new UserDto
-            {
-                Id = user.Id,
-                Email = user.Email!,
-                Name = user.Name,
-                Location = new LocationDto
-                {
-                    Latitude = user.Location.Latitude,
-                    Longitude = user.Location.Longitude,
-                    Address = user.Location.Address,
-                    City = user.Location.City,
-                    Country = user.Location.Country
-                },
-                CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt,
-                ProfilePicturePath = user.ProfilePicturePath != null ?
-                    $"/api/user/profile-picture/{Path.GetFileName(user.ProfilePicturePath)}" : null
-            };
+            return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
         }
     }
 }

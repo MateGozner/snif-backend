@@ -114,6 +114,21 @@ namespace SNIF.API.Controllers
 
             return PhysicalFile(path, "image/jpeg");
         }
+
+        [Authorize]
+        [HttpPut("preferences/{id}")]
+        public async Task<ActionResult<UserDto>> UpdatePreferences(string id, UpdatePreferencesDto preferencesDto)
+        {
+            try
+            {
+                var updatedUser = await _userService.UpdateUserPreferences(id, preferencesDto);
+                return Ok(updatedUser);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+        }
     }
 
 

@@ -1,4 +1,5 @@
 // SNIF.API/Extensions/ServiceExtensions.cs
+using AutoMapper.EquivalencyExpression;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
@@ -6,14 +7,30 @@ using Microsoft.OpenApi.Models;
 using SNIF.Busniess.Services;
 using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
+using SNIF.Core.Mappings;
 using SNIF.Infrastructure.Data;
 using SNIF.Infrastructure.Services;
 using System.Text;
+using System.Text.Json.Serialization;
 
 public static class ServiceExtensions
 {
     public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration config)
     {
+
+        // Add AutoMapper
+        services.AddAutoMapper(cfg =>
+        {
+            cfg.AddCollectionMappers();
+        }, typeof(LocationMappingProfile).Assembly);
+
+        services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+                options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            });
+
         // Core services
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IUserService, UserService>();
