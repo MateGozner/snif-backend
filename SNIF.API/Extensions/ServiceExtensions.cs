@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using SNIF.Application.Services;
 using SNIF.Busniess.Services;
 using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
 using SNIF.Core.Mappings;
 using SNIF.Infrastructure.Data;
+using SNIF.Infrastructure.Repository;
 using SNIF.Infrastructure.Services;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -23,6 +25,7 @@ public static class ServiceExtensions
         {
             cfg.AddCollectionMappers();
         }, typeof(LocationMappingProfile).Assembly);
+        services.AddAutoMapper(typeof(PetMappingProfile).Assembly);
 
         services.AddControllers()
             .AddJsonOptions(options =>
@@ -34,6 +37,9 @@ public static class ServiceExtensions
         // Core services
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IUserService, UserService>();
+
+        services.AddScoped<IPetService, PetService>();
+        services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
         // API Explorer for Swagger
         services.AddEndpointsApiExplorer();

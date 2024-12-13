@@ -15,6 +15,8 @@ builder.Services.AddIdentityServices(builder.Configuration);
 var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
 Directory.CreateDirectory(webRootPath);
 Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "profiles"));
+Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "pets", "photos"));
+Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "pets", "videos"));
 builder.WebHost.UseWebRoot(webRootPath);
 
 // Configure PostgreSQL
