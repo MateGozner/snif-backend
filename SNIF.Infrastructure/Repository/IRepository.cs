@@ -1,5 +1,6 @@
 
 using System.Linq.Expressions;
+using SNIF.Core.Specifications;
 
 namespace SNIF.Infrastructure.Repository
 {
@@ -13,5 +14,7 @@ namespace SNIF.Infrastructure.Repository
         Task DeleteAsync(T entity);
         Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate);
         Task<int> CountAsync(Expression<Func<T, bool>> predicate);
+        Task<T?> GetBySpecificationAsync(IQuerySpecification<T> specification);
+        Task<IReadOnlyList<T>> FindBySpecificationAsync(IQuerySpecification<T> specification);
     }
 }

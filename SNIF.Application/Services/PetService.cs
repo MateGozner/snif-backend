@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
+using SNIF.Core.Specifications;
 using SNIF.Infrastructure.Repository;
 
 namespace SNIF.Application.Services
@@ -30,15 +31,16 @@ namespace SNIF.Application.Services
 
         public async Task<IEnumerable<PetDto>> GetUserPetsAsync(string userId)
         {
-            var pets = await _petRepository.FindAsync(p => p.OwnerId == userId);
+            var spec = new PetWithDetailsSpecification(p => p.OwnerId == userId);
+            var pets = await _petRepository.FindBySpecificationAsync(spec);
             return _mapper.Map<IEnumerable<PetDto>>(pets);
         }
 
         public async Task<PetDto> GetPetByIdAsync(string id)
         {
-            var pet = await _petRepository.GetByIdAsync(id)
-                ?? throw new KeyNotFoundException($"Pet with ID {id} not found");
-            return _mapper.Map<PetDto>(pet);
+            var spec = new PetWithDetailsSpecification(id);
+            var pet = await _petRepository.GetBySpecificationAsync(spec);
+            return _mapper.Map<PetDto>(pet) ?? throw new KeyNotFoundException($"Pet with ID {id} not found");
         }
 
         public async Task<PetDto> CreatePetAsync(string userId, CreatePetDto createPetDto)

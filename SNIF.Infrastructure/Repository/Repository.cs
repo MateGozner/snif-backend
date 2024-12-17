@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using SNIF.Core.Specifications;
 using SNIF.Infrastructure.Data;
 
 namespace SNIF.Infrastructure.Repository
@@ -58,6 +59,29 @@ namespace SNIF.Infrastructure.Repository
         public virtual async Task<int> CountAsync(Expression<Func<T, bool>> predicate)
         {
             return await _dbSet.CountAsync(predicate);
+        }
+
+        private IQueryable<T> ApplySpecification(IQuerySpecification<T> spec)
+        {
+            var query = _dbSet.AsQueryable();
+
+            if (spec.Criteria != null)
+                query = query.Where(spec.Criteria);
+
+            query = spec.Includes.Aggregate(query, (current, include) => current.Include(include));
+            query = spec.IncludeStrings.Aggregate(query, (current, include) => current.Include(include));
+
+            return query;
+        }
+
+        public async Task<T?> GetBySpecificationAsync(IQuerySpecification<T> specification)
+        {
+            return await ApplySpecification(specification).FirstOrDefaultAsync();
+        }
+
+        public async Task<IReadOnlyList<T>> FindBySpecificationAsync(IQuerySpecification<T> specification)
+        {
+            return await ApplySpecification(specification).ToListAsync();
         }
     }
 
