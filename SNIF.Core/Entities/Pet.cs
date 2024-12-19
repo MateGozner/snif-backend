@@ -50,5 +50,7 @@ namespace SNIF.Core.Entities
 
         [Required]
         public string OwnerId { get; set; } = null!;
+        public virtual ICollection<Match> InitiatedMatches { get; set; } = new List<Match>();
+        public virtual ICollection<Match> ReceivedMatches { get; set; } = new List<Match>();
     }
 }

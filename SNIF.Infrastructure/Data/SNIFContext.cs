@@ -13,6 +13,7 @@ namespace SNIF.Infrastructure.Data
         public DbSet<BreederVerification> BreederVerifications => Set<BreederVerification>();
         public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
         public DbSet<Location> Locations => Set<Location>();
+        public DbSet<Match> Matches => Set<Match>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -43,6 +44,27 @@ namespace SNIF.Infrastructure.Data
 
             builder.Entity<User>()
                 .HasOne(u => u.Preferences);
+
+            builder.Entity<Match>(b =>
+            {
+                b.HasKey(x => x.Id);
+
+                // Configure InitiatorPet relationship
+                b.HasOne(m => m.InitiatiorPet)
+                 .WithMany(p => p.InitiatedMatches)
+                 .HasForeignKey(m => m.InitiatiorPetId)
+                 .OnDelete(DeleteBehavior.Restrict); // Prevent cascade delete
+
+                // Configure TargetPet relationship
+                b.HasOne(m => m.TargetPet)
+                 .WithMany(p => p.ReceivedMatches)
+                 .HasForeignKey(m => m.TargetPetId)
+                 .OnDelete(DeleteBehavior.Restrict);
+                b.Property(m => m.Status).HasConversion<string>();
+
+                b.Property(m => m.Purpose)
+                 .HasConversion<string>();
+            });
         }
     }
 }

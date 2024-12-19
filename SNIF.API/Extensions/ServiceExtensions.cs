@@ -24,8 +24,9 @@ public static class ServiceExtensions
         services.AddAutoMapper(cfg =>
         {
             cfg.AddCollectionMappers();
-        }, typeof(LocationMappingProfile).Assembly);
-        services.AddAutoMapper(typeof(PetMappingProfile).Assembly);
+        }, typeof(LocationMappingProfile).Assembly,
+           typeof(PetMappingProfile).Assembly,
+           typeof(MatchMappingProfile).Assembly);
 
         services.AddControllers()
             .AddJsonOptions(options =>
@@ -39,6 +40,7 @@ public static class ServiceExtensions
         services.AddScoped<IUserService, UserService>();
 
         services.AddScoped<IPetService, PetService>();
+        services.AddScoped<IMatchService, MatchService>();
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
         // API Explorer for Swagger
