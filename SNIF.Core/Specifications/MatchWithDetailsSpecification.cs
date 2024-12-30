@@ -28,6 +28,8 @@ namespace SNIF.Core.Specifications
             AddInclude(m => m.TargetPet);
             AddInclude("InitiatiorPet.Location");
             AddInclude("TargetPet.Location");
+            AddInclude("InitiatiorPet.MedicalHistory");
+            AddInclude("TargetPet.MedicalHistory");
         }
 
 

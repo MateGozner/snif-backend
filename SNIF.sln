@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SNIF.Busniess", "SNIF.Appli
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SNIF.Infrastructure", "SNIF.Infrastructure\SNIF.Infrastructure.csproj", "{C5CFC36C-92D0-43A2-8796-2043222EE6B6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SNIF.SignalR", "SNIF.SignalR\SNIF.SignalR.csproj", "{5E527C6E-7B9C-48CC-A1A6-4B098307DB03}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{C5CFC36C-92D0-43A2-8796-2043222EE6B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C5CFC36C-92D0-43A2-8796-2043222EE6B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C5CFC36C-92D0-43A2-8796-2043222EE6B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5E527C6E-7B9C-48CC-A1A6-4B098307DB03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5E527C6E-7B9C-48CC-A1A6-4B098307DB03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5E527C6E-7B9C-48CC-A1A6-4B098307DB03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5E527C6E-7B9C-48CC-A1A6-4B098307DB03}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

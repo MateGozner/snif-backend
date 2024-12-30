@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SNIF.Infrastructure.Data;
+using SNIF.SignalR.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,11 +24,12 @@ builder.WebHost.UseWebRoot(webRootPath);
 builder.Services.AddDbContext<SNIFContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add CORS
+// Add CORS - Single policy
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowedOrigins",
-        builder => builder.WithOrigins("http://localhost:3000")
+    options.AddPolicy("CorsPolicy",
+        builder => builder
+            .WithOrigins("http://localhost:3000")
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials());
@@ -42,12 +44,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseRouting();
+app.UseCors("CorsPolicy"); // Single CORS policy
 app.UseHttpsRedirection();
-app.UseCors("AllowedOrigins");
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllers();
-
 app.UseStaticFiles();
+app.MapHub<MatchHub>("/matchHub");
+app.MapControllers();
 
 app.Run();

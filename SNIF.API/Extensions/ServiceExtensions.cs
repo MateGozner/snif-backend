@@ -12,6 +12,7 @@ using SNIF.Core.Mappings;
 using SNIF.Infrastructure.Data;
 using SNIF.Infrastructure.Repository;
 using SNIF.Infrastructure.Services;
+using SNIF.SignalR.Services;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -42,6 +43,10 @@ public static class ServiceExtensions
         services.AddScoped<IPetService, PetService>();
         services.AddScoped<IMatchService, MatchService>();
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+
+        // Add SignalR services
+        services.AddSignalR();
+        services.AddScoped<INotificationService, SignalRNotificationService>();
 
         // API Explorer for Swagger
         services.AddEndpointsApiExplorer();
@@ -119,6 +124,21 @@ public static class ServiceExtensions
                     ValidAudience = config["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(
                         Encoding.UTF8.GetBytes(config["Jwt:Key"]!))
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/matchHub"))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    }
                 };
             });
 

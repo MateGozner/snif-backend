@@ -19,23 +19,35 @@ namespace SNIF.Busniess.Services
         private readonly IRepository<Pet> _petRepository;
         private readonly IRepository<User> _userRepository;
         private readonly IMapper _mapper;
+        private readonly INotificationService _notificationService;
 
-        public MatchService(IRepository<Match> matchRepository, IRepository<Pet> petRepository, IRepository<User> userRepository, IMapper mapper)
+        public MatchService(IRepository<Match> matchRepository, IRepository<Pet> petRepository, IRepository<User> userRepository, IMapper mapper, INotificationService notificationService)
         {
             _matchRepository = matchRepository;
             _petRepository = petRepository;
             _userRepository = userRepository;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
 
         public async Task<MatchDto> CreateMatchAsync(string initiatorPetId, CreateMatchDto createMatchDto)
         {
+            var initiatorPet = await _petRepository.GetBySpecificationAsync(
+                new PetWithDetailsSpecification(initiatorPetId))
+                ?? throw new KeyNotFoundException("Initiator pet not found");
+
+            var targetPet = await _petRepository.GetBySpecificationAsync(
+                new PetWithDetailsSpecification(createMatchDto.TargetPetId))
+                ?? throw new KeyNotFoundException("Target pet not found");
+
             var match = new Match
             {
                 Id = Guid.NewGuid().ToString(),
                 InitiatiorPetId = initiatorPetId,
                 TargetPetId = createMatchDto.TargetPetId,
+                InitiatiorPet = initiatorPet,
+                TargetPet = targetPet,
                 Purpose = createMatchDto.MatchPurpose,
                 Status = MatchStatus.Pending,
                 ExpiresAt = DateTime.UtcNow.AddDays(7),
@@ -43,7 +55,14 @@ namespace SNIF.Busniess.Services
             };
 
             await _matchRepository.AddAsync(match);
-            return _mapper.Map<MatchDto>(match);
+            var matchDto = _mapper.Map<MatchDto>(match);
+
+            if (targetPet != null)
+            {
+                await _notificationService.NotifyNewMatch(targetPet.OwnerId, matchDto);
+            }
+
+            return matchDto;
         }
 
         public async Task DeleteMatchAsync(string matchId)
@@ -137,14 +156,32 @@ namespace SNIF.Busniess.Services
 
         public async Task<MatchDto> UpdateMatchStatusAsync(string matchId, MatchStatus status)
         {
-            var match = await _matchRepository.GetByIdAsync(matchId)
+            var match = await _matchRepository.GetBySpecificationAsync(
+                new MatchWithDetailsSpecification(matchId))
                 ?? throw new KeyNotFoundException("Match not found");
+
 
             match.Status = status;
             match.UpdatedAt = DateTime.UtcNow;
 
             await _matchRepository.UpdateAsync(match);
-            return _mapper.Map<MatchDto>(match);
+            var matchDto = _mapper.Map<MatchDto>(match);
+
+            var initiatorPet = await _petRepository.GetBySpecificationAsync(
+                new PetWithDetailsSpecification(match.InitiatiorPetId));
+            var targetPet = await _petRepository.GetBySpecificationAsync(
+                new PetWithDetailsSpecification(match.TargetPetId));
+
+            if (initiatorPet != null)
+            {
+                await _notificationService.NotifyMatchStatusUpdate(initiatorPet.OwnerId, matchDto);
+            }
+            if (targetPet != null)
+            {
+                await _notificationService.NotifyMatchStatusUpdate(targetPet.OwnerId, matchDto);
+            }
+
+            return matchDto;
         }
 
         public async Task<IEnumerable<MatchDto>> GetPendingMatchesForPetAsync(string petId)

@@ -13,17 +13,20 @@ namespace SNIF.Application.Services
     public class PetService : IPetService
     {
         private readonly IRepository<Pet> _petRepository;
+        private readonly IRepository<Match> _matchRepository;
         private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _environment;
         private readonly UserManager<User> _userManager;
 
         public PetService(
             IRepository<Pet> petRepository,
+            IRepository<Match> matchRepository,
             IMapper mapper,
             IWebHostEnvironment environment,
             UserManager<User> userManager)
         {
             _petRepository = petRepository;
+            _matchRepository = matchRepository;
             _mapper = mapper;
             _environment = environment;
             _userManager = userManager;
@@ -151,6 +154,15 @@ namespace SNIF.Application.Services
         {
             var pet = await _petRepository.GetByIdAsync(id)
                 ?? throw new KeyNotFoundException($"Pet with ID {id} not found");
+
+            var matches = await _matchRepository.FindAsync(m =>
+                m.InitiatiorPetId == id ||
+                m.TargetPetId == id);
+
+            foreach (var match in matches)
+            {
+                await _matchRepository.DeleteAsync(match);
+            }
 
             // Delete all associated files
             foreach (var photo in pet.Photos)
