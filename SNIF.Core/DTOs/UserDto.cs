@@ -16,6 +16,8 @@ namespace SNIF.Core.DTOs
         public DateTime CreatedAt { get; init; }
         public DateTime? UpdatedAt { get; init; }
         public string? ProfilePicturePath { get; init; }
+        public bool IsOnline { get; init; }
+        public DateTime? LastSeen { get; init; }
     }
 
     public record CreateUserDto

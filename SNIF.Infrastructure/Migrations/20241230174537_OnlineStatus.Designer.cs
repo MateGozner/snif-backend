@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SNIF.Infrastructure.Data;
@@ -11,13 +12,15 @@ using SNIF.Infrastructure.Data;
 namespace SNIF.Infrastructure.Migrations
 {
     [DbContext(typeof(SNIFContext))]
-    partial class SNIFContextModelSnapshot : ModelSnapshot
+    [Migration("20241230174537_OnlineStatus")]
+    partial class OnlineStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.0")
+                .HasAnnotation("ProductVersion", "8.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -227,15 +230,15 @@ namespace SNIF.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.PrimitiveCollection<string[]>("Personality")
+                    b.Property<string[]>("Personality")
                         .IsRequired()
                         .HasColumnType("text[]");
 
-                    b.PrimitiveCollection<string[]>("Photos")
+                    b.Property<string[]>("Photos")
                         .IsRequired()
                         .HasColumnType("text[]");
 
-                    b.PrimitiveCollection<int[]>("Purpose")
+                    b.Property<int[]>("Purpose")
                         .IsRequired()
                         .HasColumnType("integer[]");
 
@@ -247,7 +250,7 @@ namespace SNIF.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<string[]>("Videos")
+                    b.Property<string[]>("Videos")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -361,7 +364,7 @@ namespace SNIF.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<string[]>("Documents")
+                    b.Property<string[]>("Documents")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -437,7 +440,7 @@ namespace SNIF.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<string[]>("HealthIssues")
+                    b.Property<string[]>("HealthIssues")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -450,7 +453,7 @@ namespace SNIF.Infrastructure.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<string[]>("VaccinationRecords")
+                    b.Property<string[]>("VaccinationRecords")
                         .IsRequired()
                         .HasColumnType("text[]");
 

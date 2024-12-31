@@ -4,13 +4,11 @@ using SNIF.SignalR.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddSwaggerServices();
 builder.Services.AddIdentityServices(builder.Configuration);
-
 
 // Configure static files
 var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
@@ -32,7 +30,8 @@ builder.Services.AddCors(options =>
             .WithOrigins("http://localhost:3000")
             .AllowAnyMethod()
             .AllowAnyHeader()
-            .AllowCredentials());
+            .AllowCredentials()
+            .WithExposedHeaders("Authorization")); // Add this line
 });
 
 var app = builder.Build();
@@ -44,13 +43,23 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// The order of middleware is important
 app.UseRouting();
-app.UseCors("CorsPolicy"); // Single CORS policy
+
+// CORS must be between UseRouting and UseEndpoints
+app.UseCors("CorsPolicy");
+
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseStaticFiles();
-app.MapHub<MatchHub>("/matchHub");
-app.MapControllers();
+
+// Use endpoints after all middleware
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+    endpoints.MapHub<MatchHub>("/matchHub");
+    endpoints.MapHub<OnlineHub>("/onlineHub").RequireAuthorization();
+});
 
 app.Run();

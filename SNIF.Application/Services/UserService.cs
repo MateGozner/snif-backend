@@ -246,5 +246,16 @@ namespace SNIF.Busniess.Services
             await _context.SaveChangesAsync();
             return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
         }
+
+        public async Task UpdateUserOnlineStatus(string userId, bool isOnline)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                user.LastSeen = DateTime.UtcNow;
+                user.IsOnline = isOnline;
+                await _userManager.UpdateAsync(user);
+            }
+        }
     }
 }
