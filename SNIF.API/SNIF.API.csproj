@@ -27,6 +27,7 @@
     <ProjectReference Include="..\SNIF.Core\SNIF.Core.csproj" />
     <ProjectReference Include="..\SNIF.Infrastructure\SNIF.Infrastructure.csproj" />
     <ProjectReference Include="..\SNIF.SignalR\SNIF.SignalR.csproj" />
+	<ProjectReference Include="..\SNIF.Messaging\SNIF.Messaging.csproj" />
   </ItemGroup>
 
 </Project>

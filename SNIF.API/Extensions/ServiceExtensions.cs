@@ -12,6 +12,8 @@ using SNIF.Core.Mappings;
 using SNIF.Infrastructure.Data;
 using SNIF.Infrastructure.Repository;
 using SNIF.Infrastructure.Services;
+using SNIF.Messaging.Configuration;
+using SNIF.Messaging.Services;
 using SNIF.SignalR.Services;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -39,6 +41,7 @@ public static class ServiceExtensions
         // Core services
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IMatchingLogicService, MatchingLogicService>();
 
         services.AddScoped<IPetService, PetService>();
         services.AddScoped<IMatchService, MatchService>();
@@ -50,6 +53,10 @@ public static class ServiceExtensions
 
         // API Explorer for Swagger
         services.AddEndpointsApiExplorer();
+
+        // Add RabbitMQ services
+        services.Configure<RabbitMQConfig>(config.GetSection("RabbitMQ"));
+        services.AddScoped<IMessagePublisher, RabbitMQPublisher>();
 
         return services;
     }

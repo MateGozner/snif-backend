@@ -2,8 +2,10 @@ using AutoMapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using SNIF.Core.Contracts;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
+using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
 using SNIF.Core.Specifications;
 using SNIF.Infrastructure.Repository;
@@ -16,20 +18,26 @@ namespace SNIF.Application.Services
         private readonly IRepository<Match> _matchRepository;
         private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _environment;
-        private readonly UserManager<User> _userManager;
+        private readonly IRepository<User> _userManager;
+        private readonly IMessagePublisher _messagePublisher;
+        private readonly IMatchingLogicService _matchingLogic;
 
         public PetService(
             IRepository<Pet> petRepository,
             IRepository<Match> matchRepository,
             IMapper mapper,
             IWebHostEnvironment environment,
-            UserManager<User> userManager)
+            IRepository<User> userManager,
+            IMessagePublisher messagePublisher,
+            IMatchingLogicService matchingLogic)
         {
             _petRepository = petRepository;
             _matchRepository = matchRepository;
             _mapper = mapper;
             _environment = environment;
             _userManager = userManager;
+            _messagePublisher = messagePublisher;
+            _matchingLogic = matchingLogic;
         }
 
         public async Task<IEnumerable<PetDto>> GetUserPetsAsync(string userId)
@@ -48,7 +56,7 @@ namespace SNIF.Application.Services
 
         public async Task<PetDto> CreatePetAsync(string userId, CreatePetDto createPetDto)
         {
-            var user = await _userManager.FindByIdAsync(userId)
+            var user = await _userManager.GetByIdAsync(userId)
                 ?? throw new KeyNotFoundException($"User with ID {userId} not found");
 
             var pet = _mapper.Map<Pet>(createPetDto);
@@ -74,6 +82,9 @@ namespace SNIF.Application.Services
             }
 
             await _petRepository.AddAsync(pet);
+
+            await NotifyPotentialMatches(pet);
+
             return _mapper.Map<PetDto>(pet);
         }
 
@@ -192,6 +203,34 @@ namespace SNIF.Application.Services
 
             await _petRepository.UpdateAsync(pet);
             return _mapper.Map<PetDto>(pet);
+        }
+
+        private async Task NotifyPotentialMatches(Pet newPet)
+        {
+            var potentialMatches = await _petRepository.FindBySpecificationAsync(
+                new PetWithDetailsSpecification(p => p.Id != newPet.Id));
+
+            foreach (var existingPet in potentialMatches)
+            {
+                var existingPetOwner = await _userManager.GetBySpecificationAsync(
+                    new UserWithDetailsSpecification(existingPet.OwnerId));
+
+                if (existingPetOwner?.Preferences == null)
+                    continue;
+
+                var matches = await _matchingLogic.FindPotentialMatches(
+                    existingPet,
+                    new[] { newPet },
+                    existingPetOwner);
+
+                foreach (var (_, distance) in matches)
+                {
+                    var notification = _mapper.Map<PetMatchNotification>(newPet);
+                    notification.Distance = distance;
+
+                    await _messagePublisher.PublishAsync("pet.matches.found", notification);
+                }
+            }
         }
     }
 }
