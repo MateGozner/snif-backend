@@ -50,6 +50,7 @@ public static class ServiceExtensions
         // Add SignalR services
         services.AddSignalR();
         services.AddScoped<INotificationService, SignalRNotificationService>();
+        services.AddScoped<IVideoService, VideoService>();
 
         // API Explorer for Swagger
         services.AddEndpointsApiExplorer();
