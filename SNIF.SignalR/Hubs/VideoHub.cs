@@ -12,94 +12,59 @@ namespace SNIF.SignalR.Hubs
     {
         private readonly ILogger<VideoHub> _logger;
         private const string RoomPrefix = "video_";
-        private static readonly Dictionary<string, HashSet<string>> _matchConnections = new();
-        private static readonly object _lock = new();
+
+        // Add dictionary to track call roles
+        private static readonly Dictionary<string, (string CallerId, string ReceiverId)> _activeCallRoles
+            = new Dictionary<string, (string CallerId, string ReceiverId)>();
 
         public VideoHub(ILogger<VideoHub> logger)
         {
             _logger = logger;
         }
 
-        public override async Task OnConnectedAsync()
-        {
-            var userId = Context.UserIdentifier;
-            if (!string.IsNullOrEmpty(userId))
-            {
-                lock (_lock)
-                {
-                    if (!_matchConnections.ContainsKey(userId))
-                    {
-                        _matchConnections[userId] = new HashSet<string>();
-                    }
-                    _matchConnections[userId].Add(Context.ConnectionId);
-                }
-            }
-            await base.OnConnectedAsync();
-        }
-
-        public override async Task OnDisconnectedAsync(Exception exception)
-        {
-            var userId = Context.UserIdentifier;
-            if (!string.IsNullOrEmpty(userId))
-            {
-                lock (_lock)
-                {
-                    if (_matchConnections.ContainsKey(userId))
-                    {
-                        _matchConnections[userId].Remove(Context.ConnectionId);
-                        if (!_matchConnections[userId].Any())
-                        {
-                            _matchConnections.Remove(userId);
-                        }
-                    }
-                }
-            }
-            await base.OnDisconnectedAsync(exception);
-        }
-
         public async Task InitiateCall(string matchId, string receiverId)
         {
             var callerId = Context.UserIdentifier;
-            if (string.IsNullOrEmpty(callerId) || string.IsNullOrEmpty(receiverId))
-            {
-                _logger.LogWarning("Invalid caller or receiver ID");
-                return;
-            }
+            var roomId = $"{RoomPrefix}{matchId}";
 
-            lock (_lock)
-            {
-                if (_matchConnections.TryGetValue(receiverId, out var connections))
-                {
-                    foreach (var connectionId in connections)
-                    {
-                        Groups.AddToGroupAsync(connectionId, $"{RoomPrefix}{matchId}");
-                    }
-                }
-            }
+            // Store the caller and receiver roles
+            _activeCallRoles[matchId] = (callerId, receiverId);
 
+            await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
             await Clients.User(receiverId).SendAsync("IncomingCall", callerId, matchId);
-            _logger.LogInformation($"Call initiated from {callerId} to {receiverId} for match {matchId}");
+
+            _logger.LogInformation($"Call initiated: Caller={callerId}, Receiver={receiverId}, Match={matchId}");
         }
 
         public async Task AcceptCall(string matchId, string callerId)
         {
             var receiverId = Context.UserIdentifier;
-            await Clients.Group($"{RoomPrefix}{matchId}").SendAsync("CallAccepted", matchId);
-            _logger.LogInformation($"Call accepted by {receiverId} for match {matchId}");
-        }
+            var roomId = $"{RoomPrefix}{matchId}";
 
-        public async Task DeclineCall(string matchId, string callerId)
-        {
-            var receiverId = Context.UserIdentifier;
-            await Clients.Group($"{RoomPrefix}{matchId}").SendAsync("CallDeclined", matchId);
-            _logger.LogInformation($"Call declined by {receiverId} for match {matchId}");
+            await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
+
+            // Notify both parties that call was accepted
+            await Clients.Group(roomId).SendAsync("CallAccepted", matchId);
+
+            // Tell the caller to start the WebRTC offer
+            await Clients.User(callerId).SendAsync("InitiateWebRTCOffer", matchId);
+
+            _logger.LogInformation($"Call accepted: Caller={callerId}, Receiver={receiverId}, Match={matchId}");
         }
 
         public async Task SendSignal(string matchId, string signal, string type)
         {
+            var userId = Context.UserIdentifier;
             var roomId = $"{RoomPrefix}{matchId}";
+
+            if (_activeCallRoles.TryGetValue(matchId, out var roles))
+            {
+                // Log who is sending signals to help debug
+                var senderRole = userId == roles.CallerId ? "Caller" : "Receiver";
+                _logger.LogInformation($"Signal sent: Type={type}, From={senderRole}, User={userId}, Room={roomId}");
+            }
+
             await Clients.OthersInGroup(roomId).SendAsync("ReceiveSignal", signal, type);
-            _logger.LogInformation($"Signal {type} sent in room {roomId}");
         }
 
         public async Task EndCall(string matchId)
@@ -107,26 +72,31 @@ namespace SNIF.SignalR.Hubs
             var userId = Context.UserIdentifier;
             var roomId = $"{RoomPrefix}{matchId}";
 
-            // Notify others in the group that the call has ended
-            await Clients.OthersInGroup(roomId).SendAsync("CallEnded", matchId);
+            await Clients.Group(roomId).SendAsync("CallEnded", matchId);
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
 
-            // Remove connections from the group
-            lock (_lock)
-            {
-                if (_matchConnections.TryGetValue(userId, out var connections))
-                {
-                    foreach (var connectionId in connections)
-                    {
-                        Groups.RemoveFromGroupAsync(connectionId, roomId);
-                    }
-                }
-            }
+            _activeCallRoles.Remove(matchId);
 
-            _logger.LogInformation($"Call ended by {userId} for match {matchId}");
+            _logger.LogInformation($"Call ended: User={userId}, Match={matchId}");
         }
 
+        public override async Task OnDisconnectedAsync(Exception exception)
+        {
+            var userId = Context.UserIdentifier;
 
+            // Find and end any active calls for this user
+            var matchesToEnd = _activeCallRoles
+                .Where(kvp => kvp.Value.CallerId == userId || kvp.Value.ReceiverId == userId)
+                .Select(kvp => kvp.Key)
+                .ToList();
 
+            foreach (var matchId in matchesToEnd)
+            {
+                await EndCall(matchId);
+            }
 
+            _logger.LogInformation($"User {userId} disconnected from video hub");
+            await base.OnDisconnectedAsync(exception);
+        }
     }
 }
