@@ -45,6 +45,7 @@ public static class ServiceExtensions
 
         services.AddScoped<IPetService, PetService>();
         services.AddScoped<IMatchService, MatchService>();
+        services.AddScoped<IChatService, ChatService>();
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
         // Add SignalR services
@@ -141,7 +142,11 @@ public static class ServiceExtensions
                         var accessToken = context.Request.Query["access_token"];
                         var path = context.HttpContext.Request.Path;
 
-                        if (!string.IsNullOrEmpty(accessToken) && (path.StartsWithSegments("/matchHub") || path.StartsWithSegments("/onlineHub")))
+                        if (!string.IsNullOrEmpty(accessToken) &&
+                            (path.StartsWithSegments("/matchHub") ||
+                             path.StartsWithSegments("/onlineHub") ||
+                             path.StartsWithSegments("/chatHub") ||
+                             path.StartsWithSegments("/videoHub")))
                         {
                             context.Token = accessToken;
                         }

@@ -61,6 +61,7 @@ app.UseEndpoints(endpoints =>
     endpoints.MapHub<MatchHub>("/matchHub");
     endpoints.MapHub<OnlineHub>("/onlineHub").RequireAuthorization();
     endpoints.MapHub<VideoHub>("/videoHub").RequireAuthorization();
+    endpoints.MapHub<ChatHub>("/chatHub").RequireAuthorization();
 });
 
 app.Run();

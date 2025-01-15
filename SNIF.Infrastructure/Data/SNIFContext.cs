@@ -14,6 +14,7 @@ namespace SNIF.Infrastructure.Data
         public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
         public DbSet<Location> Locations => Set<Location>();
         public DbSet<Match> Matches => Set<Match>();
+        public DbSet<Message> Messages => Set<Message>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -64,6 +65,26 @@ namespace SNIF.Infrastructure.Data
 
                 b.Property(m => m.Purpose)
                  .HasConversion<string>();
+            });
+
+            builder.Entity<Message>(b =>
+            {
+                b.HasKey(x => x.Id);
+
+                b.HasOne(m => m.Sender)
+                    .WithMany()
+                    .HasForeignKey(m => m.SenderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                b.HasOne(m => m.Receiver)
+                    .WithMany()
+                    .HasForeignKey(m => m.ReceiverId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                b.HasOne(m => m.Match)
+                    .WithMany()
+                    .HasForeignKey(m => m.MatchId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }
