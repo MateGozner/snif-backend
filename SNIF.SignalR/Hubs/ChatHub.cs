@@ -38,11 +38,13 @@ namespace SNIF.SignalR.Hubs
         public async Task MarkMessageAsRead(string messageId)
         {
             var userId = Context.UserIdentifier!;
-            await _chatService.MarkAsReadAsync(messageId);
+            var message = await _chatService.MarkAsReadAsync(messageId);
 
-            // Notify both users about the read status
-            await Clients.Users(new[] { userId })
-                .SendAsync("MessageRead", messageId);
+            if (message != null)
+            {
+                await Clients.Users(new[] { userId, message.SenderId })
+                    .SendAsync("MessageRead", messageId);
+            }
         }
 
         public async Task JoinChat(string matchId)

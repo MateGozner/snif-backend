@@ -51,6 +51,9 @@ namespace SNIF.SignalR.Hubs
                     await Clients.Others.SendAsync("UserOnline", userId);
                     _logger.LogInformation($"User {userId} is now online");
                 }
+
+                var onlineUsers = _userConnections.Keys.ToList();
+                await Clients.Caller.SendAsync("InitialOnlineUsers", onlineUsers);
             }
 
             await base.OnConnectedAsync();
