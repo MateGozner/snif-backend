@@ -17,5 +17,6 @@ namespace SNIF.Core.Interfaces
         Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserPersonalInfoDto updateUserPersonalInfoDto);
         Task<UserDto> UpdateUserPreferences(string userId, UpdatePreferencesDto preferencesDto);
         Task UpdateUserOnlineStatus(string userId, bool isOnline);
+        Task<AuthResponseDto> ValidateAndRefreshTokenAsync(string token);
     }
 }

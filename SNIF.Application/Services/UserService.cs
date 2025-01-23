@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
@@ -10,6 +11,7 @@ using SNIF.Core.Models;
 using SNIF.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
 using System.Text;
@@ -219,6 +221,30 @@ namespace SNIF.Busniess.Services
             await _context.SaveChangesAsync();
 
             return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
+        }
+
+        public async Task<AuthResponseDto> ValidateAndRefreshTokenAsync(string token)
+        {
+            var principal = _tokenService.ValidateToken(token);
+            if (principal == null)
+                throw new UnauthorizedAccessException("Invalid token");
+
+            var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                throw new UnauthorizedAccessException("Invalid token claims");
+
+            var user = await _userManager.Users
+                .Include(u => u.Location)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+                throw new UnauthorizedAccessException("User not found");
+
+            // Generate new token
+            var authResponse = _mapper.Map<AuthResponseDto>(user)!;
+            authResponse = authResponse with { Token = _tokenService.CreateToken(user) };
+
+            return authResponse;
         }
 
         public async Task<UserDto> UpdateUserLocation(string userId, LocationDto locationDto)

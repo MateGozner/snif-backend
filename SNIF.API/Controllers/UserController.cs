@@ -129,6 +129,25 @@ namespace SNIF.API.Controllers
                 return NotFound(ex.Message);
             }
         }
+
+        [HttpPost("validate-token")]
+        public async Task<ActionResult<AuthResponseDto>> ValidateToken([FromBody] TokenValidationDto tokenDto)
+        {
+            try
+            {
+                var response = await _userService.ValidateAndRefreshTokenAsync(tokenDto.Token);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
     }
 
 
