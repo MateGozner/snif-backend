@@ -11,7 +11,7 @@ SNIF egy specializált platform, amely kisállatok számára teszi lehetővé a 
 - Frontend: Next.js, TypeScript, TailwindCSS
 - Backend: .NET Core, Entity Framework
 - Adatbázis: PostgreSQL
-- Egyéb: Redis (gyorsítótár), RabbitMQ (üzenetkezelés)
+- Egyéb: RabbitMQ (üzenetkezelés)
 
 ### Funkcionális Követelmények
 
