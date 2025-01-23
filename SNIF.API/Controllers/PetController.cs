@@ -1,6 +1,7 @@
 // SNIF.API/Controllers/PetController.cs
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SNIF.API.Extensions;
 using SNIF.Core.DTOs;
 using SNIF.Core.Interfaces;
 using System.Security.Claims;
@@ -21,15 +22,25 @@ namespace SNIF.API.Controllers
         }
 
         [HttpGet("user/{userId}")]
+        [ProducesResponseType(typeof(IEnumerable<PetDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<IEnumerable<PetDto>>> GetUserPets(string userId)
         {
+            if (string.IsNullOrEmpty(userId))
+                return BadRequest(new ErrorResponse { Message = "User ID is required" });
+
             var pets = await _petService.GetUserPetsAsync(userId);
             return Ok(pets);
         }
 
         [HttpGet("{id}")]
+        [ProducesResponseType(typeof(PetDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PetDto>> GetPet(string id)
         {
+            if (string.IsNullOrEmpty(id))
+                return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
+
             try
             {
                 var pet = await _petService.GetPetByIdAsync(id);
@@ -37,31 +48,46 @@ namespace SNIF.API.Controllers
             }
             catch (KeyNotFoundException)
             {
-                return NotFound();
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
 
         [HttpPost]
+        [ProducesResponseType(typeof(PetDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<PetDto>> CreatePet(CreatePetDto createPetDto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid pet data" });
+
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (userId == null)
-                return Unauthorized();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
 
             try
             {
                 var pet = await _petService.CreatePetAsync(userId, createPetDto);
                 return CreatedAtAction(nameof(GetPet), new { id = pet.Id }, pet);
             }
-            catch (KeyNotFoundException)
+            catch (Exception ex)
             {
-                return NotFound();
+                return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
 
+
         [HttpPut("{id}")]
+        [ProducesResponseType(typeof(PetDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PetDto>> UpdatePet(string id, [FromBody] UpdatePetDto updatePetDto)
         {
+            if (string.IsNullOrEmpty(id))
+                return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
+
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid update data" });
+
             try
             {
                 var pet = await _petService.UpdatePetAsync(id, updatePetDto);
@@ -69,13 +95,18 @@ namespace SNIF.API.Controllers
             }
             catch (KeyNotFoundException)
             {
-                return NotFound();
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
 
         [HttpDelete("{id}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeletePet(string id)
         {
+            if (string.IsNullOrEmpty(id))
+                return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
+
             try
             {
                 await _petService.DeletePetAsync(id);
@@ -83,9 +114,10 @@ namespace SNIF.API.Controllers
             }
             catch (KeyNotFoundException)
             {
-                return NotFound();
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
+
 
         [HttpPost("{id}/photos")]
         public async Task<IActionResult> AddPhoto(string id, IFormFile photo)

@@ -1,14 +1,9 @@
-
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore.Storage;
+using SNIF.API.Extensions;
 using SNIF.Core.DTOs;
-using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
-using SNIF.Core.Models;
-using SNIF.Infrastructure.Data;
-using System.Security.Claims;
+using System.Net;
 
 namespace SNIF.API.Controllers
 {
@@ -21,12 +16,19 @@ namespace SNIF.API.Controllers
 
         public UserController(IUserService userService, IWebHostEnvironment environment)
         {
-            _userService = userService;
-            _environment = environment;
+            _userService = userService ?? throw new ArgumentNullException(nameof(userService));
+            _environment = environment ?? throw new ArgumentNullException(nameof(environment));
         }
+
         [HttpPost("register")]
+        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<AuthResponseDto>> Register(CreateUserDto createUserDto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid input data" });
+
             try
             {
                 var user = await _userService.RegisterUserAsync(createUserDto);
@@ -34,13 +36,18 @@ namespace SNIF.API.Controllers
             }
             catch (UnauthorizedAccessException e)
             {
-                return Unauthorized(e.Message);
+                return Unauthorized(new ErrorResponse { Message = e.Message });
             }
         }
 
         [HttpPost("login")]
+        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<AuthResponseDto>> Login(LoginDto loginDto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid login data" });
+
             try
             {
                 var user = await _userService.LoginUserAsync(loginDto);
@@ -48,12 +55,13 @@ namespace SNIF.API.Controllers
             }
             catch (UnauthorizedAccessException e)
             {
-                return Unauthorized(e.Message);
+                return Unauthorized(new ErrorResponse { Message = e.Message });
             }
         }
 
         [Authorize]
         [HttpPost("logout")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<ActionResult> Logout()
         {
             await _userService.LogoutUser();
@@ -61,8 +69,13 @@ namespace SNIF.API.Controllers
         }
 
         [HttpGet("profile/{id}")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<UserDto>> GetProfileById(string id)
         {
+            if (string.IsNullOrEmpty(id))
+                return BadRequest(new ErrorResponse { Message = "Invalid user id" });
+
             try
             {
                 var profile = await _userService.GetUserProfileById(id);
@@ -70,14 +83,19 @@ namespace SNIF.API.Controllers
             }
             catch (KeyNotFoundException ex)
             {
-                return NotFound(ex.Message);
+                return NotFound(new ErrorResponse { Message = ex.Message });
             }
         }
 
         [Authorize]
         [HttpGet("check-auth/{email}")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<UserDto>> CheckAuthByEmail(string email)
         {
+            if (string.IsNullOrEmpty(email))
+                return BadRequest(new ErrorResponse { Message = "Email is required" });
+
             try
             {
                 var user = await _userService.IsUserLoggedInByEmail(email);
@@ -85,13 +103,21 @@ namespace SNIF.API.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Unauthorized(ex.Message);
+                return Unauthorized(new ErrorResponse { Message = ex.Message });
             }
         }
 
         [HttpPut("profile/{id}")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<UserDto>> UpdateProfile(string id, UpdateUserPersonalInfoDto updateUserPersonalInfoDto)
         {
+            if (string.IsNullOrEmpty(id))
+                return BadRequest(new ErrorResponse { Message = "Invalid user id" });
+
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid update data" });
+
             try
             {
                 var updatedProfile = await _userService.UpdateUserPersonalInfo(id, updateUserPersonalInfoDto);
@@ -99,26 +125,37 @@ namespace SNIF.API.Controllers
             }
             catch (KeyNotFoundException ex)
             {
-                return NotFound(ex.Message);
+                return NotFound(new ErrorResponse { Message = ex.Message });
             }
         }
 
-        [HttpGet("profile-picture/{filename}")]
+        [HttpGet("profile-picture/{fileName}")]
+        [ProducesResponseType(typeof(PhysicalFileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public IActionResult GetProfilePicture(string fileName)
         {
+            if (string.IsNullOrEmpty(fileName))
+                return BadRequest(new ErrorResponse { Message = "File name is required" });
+
             var path = Path.Combine(_environment.WebRootPath, "uploads", "profiles", fileName);
             if (!System.IO.File.Exists(path))
-            {
-                return NotFound();
-            }
+                return NotFound(new ErrorResponse { Message = "Profile picture not found" });
 
             return PhysicalFile(path, "image/jpeg");
         }
 
         [Authorize]
         [HttpPut("preferences/{id}")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<UserDto>> UpdatePreferences(string id, UpdatePreferencesDto preferencesDto)
         {
+            if (string.IsNullOrEmpty(id))
+                return BadRequest(new ErrorResponse { Message = "Invalid user id" });
+
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid preferences data" });
+
             try
             {
                 var updatedUser = await _userService.UpdateUserPreferences(id, preferencesDto);
@@ -126,11 +163,12 @@ namespace SNIF.API.Controllers
             }
             catch (KeyNotFoundException ex)
             {
-                return NotFound(ex.Message);
+                return NotFound(new ErrorResponse { Message = ex.Message });
             }
         }
 
         [HttpPost("validate-token")]
+        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
         public async Task<ActionResult<AuthResponseDto>> ValidateToken([FromBody] TokenValidationDto tokenDto)
         {
             try
@@ -138,17 +176,10 @@ namespace SNIF.API.Controllers
                 var response = await _userService.ValidateAndRefreshTokenAsync(tokenDto.Token);
                 return Ok(response);
             }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(ex.Message);
-            }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-
     }
-
-
 }
