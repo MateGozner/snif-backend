@@ -10,7 +10,7 @@ using System.Security.Claims;
 namespace SNIF.API.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/chats")]
     [Authorize]
     public class ChatController : ControllerBase
     {
@@ -23,16 +23,12 @@ namespace SNIF.API.Controllers
             _matchService = matchService;
         }
 
-        [HttpGet("{matchId}")]
+        // GET api/chats/matches/{matchId}/messages
+        [HttpGet("matches/{matchId}/messages")]
         [ProducesResponseType(typeof(IEnumerable<MessageDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<IEnumerable<MessageDto>>> GetMatchMessages(string matchId)
         {
-            if (string.IsNullOrEmpty(matchId))
-                return BadRequest(new ErrorResponse { Message = "Match ID is required" });
-
             var authUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(authUserId))
                 return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
@@ -50,21 +46,13 @@ namespace SNIF.API.Controllers
             {
                 return NotFound(new ErrorResponse { Message = "Match not found" });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ErrorResponse { Message = "An error occurred while retrieving messages" });
-            }
         }
 
-        [HttpGet("{userId}/chats")]
+        // GET api/chats/users/{userId}
+        [HttpGet("users/{userId}")]
         [ProducesResponseType(typeof(IEnumerable<ChatSummaryDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<IEnumerable<ChatSummaryDto>>> GetUserChats(string userId)
         {
-            if (string.IsNullOrEmpty(userId))
-                return BadRequest(new ErrorResponse { Message = "User ID is required" });
-
             var authUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(authUserId) || authUserId != userId)
                 return Unauthorized(new ErrorResponse { Message = "Unauthorized access" });
@@ -74,14 +62,14 @@ namespace SNIF.API.Controllers
                 var chats = await _chatService.GetUserChatsAsync(userId);
                 return Ok(chats);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new ErrorResponse { Message = "An error occurred while retrieving chats" });
+                throw;
             }
         }
 
 
-        [HttpPost("{messageId}/read")]
+        [HttpPatch("messages/{messageId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
