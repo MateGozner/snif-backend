@@ -11,7 +11,7 @@ namespace SNIF.API.Controllers
 {
     [Authorize]
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/matches")]
     public class MatchController : ControllerBase
     {
         private readonly IMatchService _matchService;
@@ -21,17 +21,26 @@ namespace SNIF.API.Controllers
             _matchService = matchService;
         }
 
-        [HttpGet("pet/{petId}")]
+        // GET api/matches?petId={petId}&status={status}
+        [HttpGet]
         [ProducesResponseType(typeof(IEnumerable<MatchDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<IEnumerable<MatchDto>>> GetPetMatches(string petId)
+        public async Task<ActionResult<IEnumerable<MatchDto>>> GetMatches(
+            [FromQuery] string petId,
+            [FromQuery] MatchStatus? status = null)
         {
             if (string.IsNullOrEmpty(petId))
                 return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
 
             try
             {
-                var matches = await _matchService.GetPetMatchesAsync(petId);
+                var matches = status switch
+                {
+                    MatchStatus.Pending => await _matchService.GetPendingMatchesForPetAsync(petId),
+                    null => await _matchService.GetPetMatchesAsync(petId),
+                    _ => throw new ArgumentException("Invalid status")
+                };
+
+                Response.Headers.Append("Cache-Control", "private, max-age=60");
                 return Ok(matches);
             }
             catch (KeyNotFoundException)
@@ -39,6 +48,7 @@ namespace SNIF.API.Controllers
                 return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
+
 
         [HttpGet("pet/{petId}/pending")]
         [ProducesResponseType(typeof(IEnumerable<MatchDto>), StatusCodes.Status200OK)]
@@ -59,10 +69,12 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [HttpGet("pet/{petId}/potential")]
+        // GET api/matches/potential?petId={petId}&purpose={purpose}
+        [HttpGet("potential")]
         [ProducesResponseType(typeof(IEnumerable<PetDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<IEnumerable<PetDto>>> GetPotentialMatches(string petId, [FromQuery] PetPurpose purpose)
+        public async Task<ActionResult<IEnumerable<PetDto>>> GetPotentialMatches(
+            [FromQuery] string petId,
+            [FromQuery] PetPurpose? purpose)
         {
             if (string.IsNullOrEmpty(petId))
                 return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
@@ -70,6 +82,7 @@ namespace SNIF.API.Controllers
             try
             {
                 var matches = await _matchService.GetPotentialMatchesAsync(petId, purpose);
+                Response.Headers.Append("Cache-Control", "private, max-age=300"); // 5 minutes
                 return Ok(matches);
             }
             catch (KeyNotFoundException)
@@ -78,17 +91,16 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [HttpGet("{matchId}")]
+        // GET api/matches/{id}
+        [HttpGet("{id}")]
         [ProducesResponseType(typeof(MatchDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<MatchDto>> GetMatch(string matchId)
+        public async Task<ActionResult<MatchDto>> GetMatch(string id)
         {
-            if (string.IsNullOrEmpty(matchId))
-                return BadRequest(new ErrorResponse { Message = "Match ID is required" });
-
             try
             {
-                var match = await _matchService.GetMatchByIdAsync(matchId);
+                var match = await _matchService.GetMatchByIdAsync(id);
+                Response.Headers.Append("Cache-Control", "private, max-age=60");
                 return Ok(match);
             }
             catch (KeyNotFoundException)
@@ -98,21 +110,19 @@ namespace SNIF.API.Controllers
         }
 
 
-        [HttpPost("pet/{petId}/match")]
-        [ProducesResponseType(typeof(MatchDto), StatusCodes.Status201Created)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult<MatchDto>> CreateMatch(string petId, [FromBody] CreateMatchDto createMatchDto)
-        {
-            if (string.IsNullOrEmpty(petId))
-                return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
 
+        // POST api/matches
+        [HttpPost]
+        [ProducesResponseType(typeof(MatchDto), StatusCodes.Status201Created)]
+        public async Task<ActionResult<MatchDto>> CreateMatch([FromBody] CreateMatchDto createMatchDto)
+        {
             if (!ModelState.IsValid)
                 return BadRequest(new ErrorResponse { Message = "Invalid match data" });
 
             try
             {
-                var match = await _matchService.CreateMatchAsync(petId, createMatchDto);
-                return CreatedAtAction(nameof(GetMatch), new { matchId = match.Id }, match);
+                var match = await _matchService.CreateMatchAsync(createMatchDto);
+                return CreatedAtAction(nameof(GetMatch), new { id = match.Id }, match);
             }
             catch (KeyNotFoundException)
             {
@@ -120,20 +130,19 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [HttpPut("{matchId}/status")]
+        // PATCH api/matches/{id}
+        [HttpPatch("{id}")]
         [ProducesResponseType(typeof(MatchDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<MatchDto>> UpdateMatchStatus(string matchId, [FromBody] UpdateMatchDto updateMatchDto)
+        public async Task<ActionResult<MatchDto>> UpdateMatchStatus(
+            string id,
+            [FromBody] UpdateMatchStatusDto updateDto)
         {
-            if (string.IsNullOrEmpty(matchId))
-                return BadRequest(new ErrorResponse { Message = "Match ID is required" });
-
             if (!ModelState.IsValid)
                 return BadRequest(new ErrorResponse { Message = "Invalid status data" });
 
             try
             {
-                var match = await _matchService.UpdateMatchStatusAsync(matchId, updateMatchDto.Status);
+                var match = await _matchService.UpdateMatchStatusAsync(id, updateDto.Status);
                 return Ok(match);
             }
             catch (KeyNotFoundException)
@@ -142,17 +151,38 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [HttpDelete("{matchId}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> DeleteMatch(string matchId)
+        [HttpGet("bulk")]
+        [ProducesResponseType(typeof(IDictionary<string, IEnumerable<MatchDto>>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<IDictionary<string, IEnumerable<MatchDto>>>> GetBulkMatches(
+    [FromQuery] string petIds,
+    [FromQuery] MatchStatus? status = null)
         {
-            if (string.IsNullOrEmpty(matchId))
-                return BadRequest(new ErrorResponse { Message = "Match ID is required" });
+            if (string.IsNullOrEmpty(petIds))
+                return BadRequest(new ErrorResponse { Message = "Pet IDs are required" });
+
+            var ids = petIds.Split(',').Where(id => !string.IsNullOrEmpty(id)).ToList();
 
             try
             {
-                await _matchService.DeleteMatchAsync(matchId);
+                var matches = await _matchService.GetBulkMatchesAsync(ids, status);
+                Response.Headers.Append("Cache-Control", "private, max-age=60");
+                return Ok(matches);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+
+        // DELETE api/matches/{id}
+        [HttpDelete("{id}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> DeleteMatch(string id)
+        {
+            try
+            {
+                await _matchService.DeleteMatchAsync(id);
                 return NoContent();
             }
             catch (KeyNotFoundException)

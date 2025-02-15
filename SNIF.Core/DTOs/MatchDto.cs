@@ -17,8 +17,14 @@ namespace SNIF.Core.DTOs
         public DateTime? ExpiresAt { get; init; }
     }
 
+    public record UpdateMatchStatusDto
+    {
+        public MatchStatus Status { get; set; }
+    }
+
     public record CreateMatchDto
     {
+        public string InitiatorPetId { get; init; } = null!;
         public string TargetPetId { get; init; } = null!;
         public PetPurpose MatchPurpose { get; init; }
     }

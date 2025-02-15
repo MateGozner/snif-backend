@@ -33,10 +33,10 @@ namespace SNIF.Busniess.Services
         }
 
 
-        public async Task<MatchDto> CreateMatchAsync(string initiatorPetId, CreateMatchDto createMatchDto)
+        public async Task<MatchDto> CreateMatchAsync(CreateMatchDto createMatchDto)
         {
             var initiatorPet = await _petRepository.GetBySpecificationAsync(
-                new PetWithDetailsSpecification(initiatorPetId))
+                new PetWithDetailsSpecification(createMatchDto.InitiatorPetId))
                 ?? throw new KeyNotFoundException("Initiator pet not found");
 
             var targetPet = await _petRepository.GetBySpecificationAsync(
@@ -46,7 +46,7 @@ namespace SNIF.Busniess.Services
             var match = new Match
             {
                 Id = Guid.NewGuid().ToString(),
-                InitiatiorPetId = initiatorPetId,
+                InitiatiorPetId = createMatchDto.InitiatorPetId,
                 TargetPetId = createMatchDto.TargetPetId,
                 InitiatiorPet = initiatorPet,
                 TargetPet = targetPet,
@@ -94,7 +94,7 @@ namespace SNIF.Busniess.Services
             return _mapper.Map<IEnumerable<MatchDto>>(matches);
         }
 
-        public async Task<IEnumerable<PetDto>> GetPotentialMatchesAsync(string petId, PetPurpose purpose)
+        public async Task<IEnumerable<PetDto>> GetPotentialMatchesAsync(string petId, PetPurpose? purpose)
         {
             var initiatorPet = await _petRepository.GetBySpecificationAsync(
                 new PetWithDetailsSpecification(petId))
@@ -180,5 +180,25 @@ namespace SNIF.Busniess.Services
 
             return _mapper.Map<IEnumerable<MatchDto>>(orderedMatches);
         }
+
+        public async Task<IDictionary<string, IEnumerable<MatchDto>>> GetBulkMatchesAsync(IEnumerable<string> petIds,
+    MatchStatus? status = null)
+        {
+            var results = new Dictionary<string, IEnumerable<MatchDto>>();
+
+            foreach (var petId in petIds)
+            {
+                var matches = status switch
+                {
+                    MatchStatus.Pending => await GetPendingMatchesForPetAsync(petId),
+                    null => await GetPetMatchesAsync(petId),
+                    _ => throw new ArgumentException("Invalid status")
+                };
+                results[petId] = matches;
+            }
+
+            return results;
+        }
+
     }
 }
