@@ -1,14 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SNIF.API.Extensions;
 using SNIF.Core.DTOs;
 using SNIF.Core.Interfaces;
-using System.Net;
+using Microsoft.Net.Http.Headers;
+using SNIF.API.Extensions;
 
 namespace SNIF.API.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/users")]
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
@@ -20,11 +20,11 @@ namespace SNIF.API.Controllers
             _environment = environment ?? throw new ArgumentNullException(nameof(environment));
         }
 
-        [HttpPost("register")]
-        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+        // POST api/users
+        [HttpPost]
+        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<AuthResponseDto>> Register(CreateUserDto createUserDto)
+        public async Task<ActionResult<AuthResponseDto>> CreateUser(CreateUserDto createUserDto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(new ErrorResponse { Message = "Invalid input data" });
@@ -32,26 +32,28 @@ namespace SNIF.API.Controllers
             try
             {
                 var user = await _userService.RegisterUserAsync(createUserDto);
-                return Ok(user);
+                return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
             }
             catch (UnauthorizedAccessException e)
             {
-                return Unauthorized(new ErrorResponse { Message = e.Message });
+                return BadRequest(new ErrorResponse { Message = e.Message });
             }
         }
 
-        [HttpPost("login")]
+        // POST api/users/token
+        [HttpPost("token")]
         [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<AuthResponseDto>> Login(LoginDto loginDto)
+        public async Task<ActionResult<AuthResponseDto>> CreateToken(LoginDto loginDto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(new ErrorResponse { Message = "Invalid login data" });
 
             try
             {
-                var user = await _userService.LoginUserAsync(loginDto);
-                return Ok(user);
+                var authResponse = await _userService.LoginUserAsync(loginDto);
+                Response.Headers.Append("Cache-Control", "no-store");
+                return Ok(authResponse);
             }
             catch (UnauthorizedAccessException e)
             {
@@ -59,26 +61,27 @@ namespace SNIF.API.Controllers
             }
         }
 
+        // DELETE api/users/token
         [Authorize]
-        [HttpPost("logout")]
+        [HttpDelete("token")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public async Task<ActionResult> Logout()
+        public async Task<ActionResult> DeleteToken()
         {
             await _userService.LogoutUser();
+            Response.Headers.Append("Cache-Control", "no-store");
             return NoContent();
         }
 
-        [HttpGet("profile/{id}")]
+        // GET api/users/{id}
+        [HttpGet("{id}")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<UserDto>> GetProfileById(string id)
+        public async Task<ActionResult<UserDto>> GetUser(string id)
         {
-            if (string.IsNullOrEmpty(id))
-                return BadRequest(new ErrorResponse { Message = "Invalid user id" });
-
             try
             {
                 var profile = await _userService.GetUserProfileById(id);
+                Response.Headers.Append("Cache-Control", "private, max-age=3600");
                 return Ok(profile);
             }
             catch (KeyNotFoundException ex)
@@ -87,40 +90,17 @@ namespace SNIF.API.Controllers
             }
         }
 
+        // PUT api/users/{id}
         [Authorize]
-        [HttpGet("check-auth/{email}")]
-        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<UserDto>> CheckAuthByEmail(string email)
-        {
-            if (string.IsNullOrEmpty(email))
-                return BadRequest(new ErrorResponse { Message = "Email is required" });
-
-            try
-            {
-                var user = await _userService.IsUserLoggedInByEmail(email);
-                return Ok(user);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(new ErrorResponse { Message = ex.Message });
-            }
-        }
-
-        [HttpPut("profile/{id}")]
+        [HttpPut("{id}")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<UserDto>> UpdateProfile(string id, UpdateUserPersonalInfoDto updateUserPersonalInfoDto)
+        public async Task<ActionResult<UserDto>> UpdateUser(string id, UpdateUserDto updateUserDto)
         {
-            if (string.IsNullOrEmpty(id))
-                return BadRequest(new ErrorResponse { Message = "Invalid user id" });
-
-            if (!ModelState.IsValid)
-                return BadRequest(new ErrorResponse { Message = "Invalid update data" });
-
             try
             {
-                var updatedProfile = await _userService.UpdateUserPersonalInfo(id, updateUserPersonalInfoDto);
+                var updatedProfile = await _userService.UpdateUserPersonalInfo(id, updateUserDto);
+                Response.Headers.Append("Cache-Control", "no-cache");
                 return Ok(updatedProfile);
             }
             catch (KeyNotFoundException ex)
@@ -129,36 +109,57 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [HttpGet("profile-picture/{fileName}")]
-        [ProducesResponseType(typeof(PhysicalFileResult), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public IActionResult GetProfilePicture(string fileName)
-        {
-            if (string.IsNullOrEmpty(fileName))
-                return BadRequest(new ErrorResponse { Message = "File name is required" });
-
-            var path = Path.Combine(_environment.WebRootPath, "uploads", "profiles", fileName);
-            if (!System.IO.File.Exists(path))
-                return NotFound(new ErrorResponse { Message = "Profile picture not found" });
-
-            return PhysicalFile(path, "image/jpeg");
-        }
-
+        // PUT api/users/{id}/picture
         [Authorize]
-        [HttpPut("preferences/{id}")]
+        [HttpPut("{id}/picture")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<UserDto>> UpdatePreferences(string id, UpdatePreferencesDto preferencesDto)
+        public async Task<ActionResult<UserDto>> UpdateUserPicture(string id, UpdateProfilePictureDto pictureDto)
         {
-            if (string.IsNullOrEmpty(id))
-                return BadRequest(new ErrorResponse { Message = "Invalid user id" });
+            try
+            {
+                var updatedProfile = await _userService.UpdateUserProfilePicture(id, pictureDto);
+                Response.Headers.Append("Cache-Control", "no-cache");
+                return Ok(updatedProfile);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ErrorResponse { Message = ex.Message });
+            }
+        }
 
-            if (!ModelState.IsValid)
-                return BadRequest(new ErrorResponse { Message = "Invalid preferences data" });
 
+        // GET api/users/{id}/picture
+        [HttpGet("{id}/picture")]
+        [ProducesResponseType(typeof(PhysicalFileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ProfilePictureResponseDto>> GetUserPicture(string id)
+        {
+            try
+            {
+                var fileName = await _userService.GetUserProfilePictureName(id);
+                var url = $"{Request.Scheme}://{Request.Host}/uploads/profiles/{fileName}";
+
+                Response.Headers.Append("Cache-Control", "public, max-age=86400");
+                return Ok(new ProfilePictureResponseDto { Url = url });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        // PUT api/users/{id}/preferences
+        [Authorize]
+        [HttpPut("{id}/preferences")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<UserDto>> UpdateUserPreferences(string id, UpdatePreferencesDto preferencesDto)
+        {
             try
             {
                 var updatedUser = await _userService.UpdateUserPreferences(id, preferencesDto);
+                Response.Headers.Append("Cache-Control", "no-cache");
                 return Ok(updatedUser);
             }
             catch (KeyNotFoundException ex)
@@ -167,18 +168,21 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [HttpPost("validate-token")]
+        // POST api/users/token/validate
+        [HttpPost("token/validate")]
         [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<AuthResponseDto>> ValidateToken([FromBody] TokenValidationDto tokenDto)
         {
             try
             {
                 var response = await _userService.ValidateAndRefreshTokenAsync(tokenDto.Token);
+                Response.Headers.Append("Cache-Control", "no-store");
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                return BadRequest(new ErrorResponse { Message = ex.Message });
+                return Unauthorized(new ErrorResponse { Message = ex.Message });
             }
         }
     }

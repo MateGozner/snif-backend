@@ -141,7 +141,28 @@ namespace SNIF.Busniess.Services
             await _signInManager.SignOutAsync();
         }
 
-        public async Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserPersonalInfoDto updateUserPersonalInfoDto)
+        public async Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserDto updateUserPersonalInfoDto)
+        {
+            var user = await _userManager.Users
+                .Include(u => u.Location)
+                .Include(u => u.Pets)
+                .Include(u => u.Preferences)
+                    .ThenInclude(p => p.NotificationSettings)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+                throw new KeyNotFoundException("User not found");
+
+            user.Name = updateUserPersonalInfoDto.Name;
+
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return _mapper.Map<UserDto>(user)
+                ?? throw new InvalidOperationException("Failed to map user to DTO");
+        }
+
+        public async Task<UserDto> UpdateUserProfilePicture(string userId, UpdateProfilePictureDto pictureDto)
         {
             if (string.IsNullOrEmpty(_environment.WebRootPath))
                 throw new InvalidOperationException("WebRootPath is not configured");
@@ -156,23 +177,7 @@ namespace SNIF.Busniess.Services
             if (user == null)
                 throw new KeyNotFoundException("User not found");
 
-            if (!string.IsNullOrEmpty(updateUserPersonalInfoDto.Name))
-                user.Name = updateUserPersonalInfoDto.Name;
-
-            if (updateUserPersonalInfoDto.ProfilePicture != null)
-            {
-                await UpdateProfilePicture(user, updateUserPersonalInfoDto.ProfilePicture);
-            }
-
-            user.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
-            return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
-        }
-
-
-        private async Task UpdateProfilePicture(User user, IFormFile profilePicture)
-        {
+            // Delete old profile picture if exists
             if (!string.IsNullOrEmpty(user.ProfilePicturePath))
             {
                 var oldPath = Path.Combine(_environment.WebRootPath, user.ProfilePicturePath);
@@ -180,17 +185,52 @@ namespace SNIF.Busniess.Services
                     File.Delete(oldPath);
             }
 
-            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(profilePicture.FileName)}";
+            // Save new profile picture
+            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(pictureDto.FileName)}";
             var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "profiles");
             Directory.CreateDirectory(uploadPath);
             var filePath = Path.Combine(uploadPath, fileName);
 
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await profilePicture.CopyToAsync(stream);
-            }
+            // Convert base64 to file
+            var imageBytes = Convert.FromBase64String(pictureDto.Base64Data);
+            await File.WriteAllBytesAsync(filePath, imageBytes);
 
             user.ProfilePicturePath = Path.Combine("uploads", "profiles", fileName);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return _mapper.Map<UserDto>(user)
+                ?? throw new InvalidOperationException("Failed to map user to DTO");
+        }
+
+        private async Task ValidateProfilePicture(UpdateProfilePictureDto pictureDto)
+        {
+            if (string.IsNullOrEmpty(pictureDto.Base64Data))
+                throw new ArgumentException("Profile picture data is required");
+
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
+            var extension = Path.GetExtension(pictureDto.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(extension))
+                throw new ArgumentException($"Invalid file type. Allowed types are: {string.Join(", ", allowedExtensions)}");
+
+            var maxSizeInBytes = 5 * 1024 * 1024;
+            var sizeInBytes = pictureDto.Base64Data.Length * 3 / 4;
+
+            if (sizeInBytes > maxSizeInBytes)
+                throw new ArgumentException($"File size exceeds maximum allowed size of {maxSizeInBytes / 1024 / 1024}MB");
+        }
+
+        public async Task<string> GetUserProfilePictureName(string id)
+        {
+            var user = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.Id == id)
+                ?? throw new KeyNotFoundException("User not found");
+
+            if (string.IsNullOrEmpty(user.ProfilePicturePath))
+                throw new KeyNotFoundException("Profile picture not found");
+
+            return Path.GetFileName(user.ProfilePicturePath);
         }
 
         public async Task<UserDto> UpdateUserPreferences(string userId, UpdatePreferencesDto preferencesDto)
@@ -272,6 +312,8 @@ namespace SNIF.Busniess.Services
             await _context.SaveChangesAsync();
             return _mapper.Map<UserDto>(user) ?? throw new InvalidOperationException("Failed to map user to DTO");
         }
+
+        
 
         public async Task UpdateUserOnlineStatus(string userId, bool isOnline)
         {

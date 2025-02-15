@@ -14,9 +14,11 @@ namespace SNIF.Core.Interfaces
         Task LogoutUser();
         Task<UserDto> IsUserLoggedInByEmail(string email);
         Task<UserDto> GetUserProfileById(string userId);
-        Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserPersonalInfoDto updateUserPersonalInfoDto);
+        Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserDto updateUserPersonalInfoDto);
+        Task<UserDto> UpdateUserProfilePicture(string userId, UpdateProfilePictureDto pictureDto);
         Task<UserDto> UpdateUserPreferences(string userId, UpdatePreferencesDto preferencesDto);
         Task UpdateUserOnlineStatus(string userId, bool isOnline);
         Task<AuthResponseDto> ValidateAndRefreshTokenAsync(string token);
+        Task<string> GetUserProfilePictureName(string id);
     }
 }

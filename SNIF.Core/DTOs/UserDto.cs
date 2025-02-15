@@ -37,11 +37,22 @@ namespace SNIF.Core.DTOs
         public LocationDto? Location { get; init; }
     }
 
-    public record UpdateUserPersonalInfoDto
+    public class UpdateUserDto
     {
-        [StringLength(50)]
-        public string? Name { get; init; }
-        public IFormFile? ProfilePicture { get; init; }
+        public string Name { get; set; }
+    }
+
+    public class ProfilePictureResponseDto
+    {
+        public string Url { get; set; }
+    }
+
+
+    public class UpdateProfilePictureDto
+    {
+        public required string FileName { get; set; }
+        public required string ContentType { get; set; }
+        public required string Base64Data { get; set; }
     }
 
     public record LoginDto
