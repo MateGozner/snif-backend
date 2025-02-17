@@ -10,6 +10,7 @@ namespace SNIF.Core.Specifications
             AddCriteria(x => x.Id == id);
             AddInclude(x => x.MedicalHistory!);
             AddInclude(x => x.Location!);
+            AddInclude(x => x.Media);
         }
 
         public PetWithDetailsSpecification(Expression<Func<Pet, bool>> criteria)
@@ -17,6 +18,17 @@ namespace SNIF.Core.Specifications
             AddCriteria(criteria);
             AddInclude(x => x.MedicalHistory!);
             AddInclude(x => x.Location!);
+            AddInclude(x => x.Media);
         }
     }
+
+    public class PetWithMediaSpecification : BaseSpecification<Pet>
+    {
+        public PetWithMediaSpecification(string mediaId)
+        {
+            AddCriteria(x => x.Media.Any(m => m.Id == mediaId));
+            AddInclude(x => x.Media);
+        }
+    }
+
 }

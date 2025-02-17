@@ -13,6 +13,7 @@ namespace SNIF.Busniess.Services
     public class MatchingLogicService : IMatchingLogicService
     {
         private readonly ILogger<MatchingLogicService> _logger;
+        private const double DefaultSearchRadius = 50.0;
 
         public MatchingLogicService(ILogger<MatchingLogicService> logger)
         {
@@ -31,6 +32,7 @@ namespace SNIF.Busniess.Services
                 purposeFilter);
 
             var matches = new List<(Pet Pet, double Distance)>();
+            double searchRadius = ownerWithPreferences.Preferences?.SearchRadius ?? DefaultSearchRadius;
 
             foreach (var targetPet in potentialMatches)
             {
@@ -43,7 +45,7 @@ namespace SNIF.Busniess.Services
                     targetPet.Location!.Latitude,
                     targetPet.Location.Longitude);
 
-                if (distance <= ownerWithPreferences.Preferences!.SearchRadius)
+                if (distance <= searchRadius)
                 {
                     matches.Add((targetPet, distance));
                 }

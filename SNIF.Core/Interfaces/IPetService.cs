@@ -11,9 +11,10 @@ namespace SNIF.Core.Interfaces
         Task<PetDto> CreatePetAsync(string userId, CreatePetDto createPetDto);
         Task<PetDto> UpdatePetAsync(string id, UpdatePetDto updatePetDto);
         Task DeletePetAsync(string id);
-        Task<string> AddPetPhotoAsync(string id, IFormFile photo);
-        Task<string> AddPetVideoAsync(string id, IFormFile video);
-        Task DeletePetPhotoAsync(string id, string photoName);
-        Task DeletePetVideoAsync(string id, string videoName);
+        Task<MediaResponseDto> AddPetMediaAsync(string petId, AddMediaDto mediaDto, string baseUrl);
+        Task<IEnumerable<MediaResponseDto>> GetPetMediaAsync(string petId, MediaType? type = null, string baseUrl = "");
+        Task<MediaResponseDto> GetMediaByIdAsync(string mediaId, string baseUrl);
+        Task DeletePetMediaAsync(string petId, string mediaId);
+
     }
 }

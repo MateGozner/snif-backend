@@ -1,4 +1,5 @@
 using AutoMapper;
+using Azure.Core;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -16,6 +17,7 @@ namespace SNIF.Application.Services
     {
         private readonly IRepository<Pet> _petRepository;
         private readonly IRepository<Match> _matchRepository;
+        private readonly IRepository<PetMedia> _mediaRepository;
         private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _environment;
         private readonly IRepository<User> _userManager;
@@ -29,7 +31,8 @@ namespace SNIF.Application.Services
             IWebHostEnvironment environment,
             IRepository<User> userManager,
             IMessagePublisher messagePublisher,
-            IMatchingLogicService matchingLogic)
+            IMatchingLogicService matchingLogic,
+            IRepository<PetMedia> mediaRepository)
         {
             _petRepository = petRepository;
             _matchRepository = matchRepository;
@@ -38,6 +41,7 @@ namespace SNIF.Application.Services
             _userManager = userManager;
             _messagePublisher = messagePublisher;
             _matchingLogic = matchingLogic;
+            _mediaRepository = mediaRepository;
         }
 
         public async Task<IEnumerable<PetDto>> GetUserPetsAsync(string userId)
@@ -63,29 +67,167 @@ namespace SNIF.Application.Services
             pet.OwnerId = userId;
             pet.CreatedAt = DateTime.UtcNow;
 
-            if (createPetDto.Photos != null && createPetDto.Photos.Any())
-            {
-                foreach (var photo in createPetDto.Photos)
-                {
-                    var fileName = await SaveFileAsync(photo, "pets/photos");
-                    pet.Photos.Add(fileName);
-                }
-            }
-
-            if (createPetDto.Videos != null && createPetDto.Videos.Any())
-            {
-                foreach (var video in createPetDto.Videos)
-                {
-                    var fileName = await SaveFileAsync(video, "pets/videos");
-                    pet.Videos.Add(fileName);
-                }
-            }
-
             await _petRepository.AddAsync(pet);
+
+            // Handle media if provided
+            if (createPetDto.Media != null)
+            {
+                foreach (var mediaDto in createPetDto.Media)
+                {
+                    var mediaId = Guid.NewGuid().ToString();
+                    var extension = Path.GetExtension(mediaDto.FileName);
+                    var fileName = $"{mediaId}{extension}";
+
+                    var fileBytes = Convert.FromBase64String(mediaDto.Base64Data);
+                    var subFolder = mediaDto.Type == MediaType.Photo ? "photos" : "videos";
+                    var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder);
+                    Directory.CreateDirectory(uploadPath);
+                    var filePath = Path.Combine(uploadPath, fileName);
+
+                    await File.WriteAllBytesAsync(filePath, fileBytes);
+
+                    var media = new PetMedia
+                    {
+                        Id = mediaId,
+                        PetId = pet.Id,
+                        FileName = fileName,
+                        ContentType = mediaDto.ContentType,
+                        Size = fileBytes.Length,
+                        Type = mediaDto.Type,
+                        Title = mediaDto.Title ?? string.Empty,
+                        Description = mediaDto.Description ?? string.Empty,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    await _mediaRepository.AddAsync(media);
+                }
+            }
 
             await NotifyPotentialMatches(pet);
 
-            return _mapper.Map<PetDto>(pet);
+            var updatedPet = await _petRepository.GetBySpecificationAsync(new PetWithDetailsSpecification(pet.Id));
+            return _mapper.Map<PetDto>(updatedPet);
+        }
+
+
+        public async Task<MediaResponseDto> AddPetMediaAsync(string petId, AddMediaDto mediaDto, string baseUrl)
+        {
+            var pet = await _petRepository.GetByIdAsync(petId)
+                ?? throw new KeyNotFoundException($"Pet with ID {petId} not found");
+
+            var mediaId = Guid.NewGuid().ToString();
+            var extension = Path.GetExtension(mediaDto.FileName);
+            var fileName = $"{mediaId}{extension}";
+
+            // Convert base64 to bytes
+            byte[] fileBytes;
+            try
+            {
+                fileBytes = Convert.FromBase64String(mediaDto.Base64Data);
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException("Invalid base64 string");
+            }
+
+            var subFolder = mediaDto.Type == MediaType.Photo ? "photos" : "videos";
+            var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder);
+            Directory.CreateDirectory(uploadPath);
+            var filePath = Path.Combine(uploadPath, fileName);
+
+            await File.WriteAllBytesAsync(filePath, fileBytes);
+
+            var media = new PetMedia
+            {
+                Id = mediaId,
+                PetId = petId,
+                FileName = fileName,
+                ContentType = mediaDto.ContentType,
+                Size = fileBytes.Length,
+                Type = mediaDto.Type,
+                Title = mediaDto.Title ?? string.Empty,
+                Description = mediaDto.Description ?? string.Empty,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _mediaRepository.AddAsync(media);
+
+            pet.UpdatedAt = DateTime.UtcNow;
+            await _petRepository.UpdateAsync(pet);
+
+            return CreateMediaResponse(media, baseUrl);
+        }
+
+        public async Task<IEnumerable<MediaResponseDto>> GetPetMediaAsync(
+            string petId,
+            MediaType? type = null,
+            string baseUrl = "")
+        {
+            var pet = await _petRepository.GetByIdAsync(petId)
+                ?? throw new KeyNotFoundException($"Pet with ID {petId} not found");
+
+            // Get media using repository
+            var media = await _mediaRepository.FindAsync(m => m.PetId == petId);
+
+            // Apply type filter if specified
+            if (type.HasValue)
+            {
+                media = media.Where(m => m.Type == type.Value).ToList();
+            }
+
+            return media.Select(m => CreateMediaResponse(m, baseUrl));
+        }
+
+
+        public async Task<MediaResponseDto> GetMediaByIdAsync(string mediaId, string baseUrl)
+        {
+            var specification = new PetWithMediaSpecification(mediaId);
+            var pet = await _petRepository.GetBySpecificationAsync(specification);
+
+            var media = pet?.Media.FirstOrDefault(m => m.Id == mediaId)
+                ?? throw new KeyNotFoundException($"Media with ID {mediaId} not found");
+
+            return CreateMediaResponse(media, baseUrl);
+        }
+
+
+        public async Task DeletePetMediaAsync(string petId, string mediaId)
+        {
+            var pet = await _petRepository.GetByIdAsync(petId)
+                ?? throw new KeyNotFoundException($"Pet with ID {petId} not found");
+
+            var media = await _mediaRepository.GetByIdAsync(mediaId)
+                ?? throw new KeyNotFoundException($"Media with ID {mediaId} not found");
+
+            var subFolder = media.Type == MediaType.Photo ? "photos" : "videos";
+            var filePath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder, media.FileName);
+
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+
+            await _mediaRepository.DeleteAsync(media);
+            pet.UpdatedAt = DateTime.UtcNow;
+            await _petRepository.UpdateAsync(pet);
+        }
+
+        private MediaResponseDto CreateMediaResponse(PetMedia media, string baseUrl)
+        {
+            return new MediaResponseDto
+            {
+                Id = media.Id,
+                Url = $"{baseUrl}/uploads/pets/{(media.Type == MediaType.Photo ? "photos" : "videos")}/{media.FileName}",
+                Type = media.Type,
+                FileName = media.FileName,
+                ContentType = media.ContentType,
+                Size = media.Size,
+                CreatedAt = media.CreatedAt,
+                UpdatedAt = media.UpdatedAt,
+                Links = new Dictionary<string, string>
+                {
+                    ["self"] = $"/api/pets/{media.PetId}/media/{media.Id}",
+                    ["pet"] = $"/api/pets/{media.PetId}"
+                }
+            };
         }
 
         private async Task<string> SaveFileAsync(IFormFile file, string folder)
@@ -166,28 +308,23 @@ namespace SNIF.Application.Services
             var pet = await _petRepository.GetByIdAsync(id)
                 ?? throw new KeyNotFoundException($"Pet with ID {id} not found");
 
+            // Delete all media files
+            foreach (var media in pet.Media)
+            {
+                var subFolder = media.Type == MediaType.Photo ? "photos" : "videos";
+                var filePath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder, media.FileName);
+
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+            }
+
+            // Delete matches
             var matches = await _matchRepository.FindAsync(m =>
-                m.InitiatiorPetId == id ||
-                m.TargetPetId == id);
+                m.InitiatiorPetId == id || m.TargetPetId == id);
 
             foreach (var match in matches)
             {
                 await _matchRepository.DeleteAsync(match);
-            }
-
-            // Delete all associated files
-            foreach (var photo in pet.Photos)
-            {
-                var photoPath = Path.Combine(_environment.WebRootPath, "uploads", "pets/photos", photo);
-                if (File.Exists(photoPath))
-                    File.Delete(photoPath);
-            }
-
-            foreach (var video in pet.Videos)
-            {
-                var videoPath = Path.Combine(_environment.WebRootPath, "uploads", "pets/videos", video);
-                if (File.Exists(videoPath))
-                    File.Delete(videoPath);
             }
 
             await _petRepository.DeleteAsync(pet);

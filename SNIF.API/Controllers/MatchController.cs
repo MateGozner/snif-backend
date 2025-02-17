@@ -40,7 +40,6 @@ namespace SNIF.API.Controllers
                     _ => throw new ArgumentException("Invalid status")
                 };
 
-                Response.Headers.Append("Cache-Control", "private, max-age=60");
                 return Ok(matches);
             }
             catch (KeyNotFoundException)
@@ -82,7 +81,6 @@ namespace SNIF.API.Controllers
             try
             {
                 var matches = await _matchService.GetPotentialMatchesAsync(petId, purpose);
-                Response.Headers.Append("Cache-Control", "private, max-age=300"); // 5 minutes
                 return Ok(matches);
             }
             catch (KeyNotFoundException)
@@ -100,7 +98,6 @@ namespace SNIF.API.Controllers
             try
             {
                 var match = await _matchService.GetMatchByIdAsync(id);
-                Response.Headers.Append("Cache-Control", "private, max-age=60");
                 return Ok(match);
             }
             catch (KeyNotFoundException)
@@ -165,7 +162,6 @@ namespace SNIF.API.Controllers
             try
             {
                 var matches = await _matchService.GetBulkMatchesAsync(ids, status);
-                Response.Headers.Append("Cache-Control", "private, max-age=60");
                 return Ok(matches);
             }
             catch (KeyNotFoundException ex)

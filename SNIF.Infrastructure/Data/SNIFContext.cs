@@ -15,6 +15,7 @@ namespace SNIF.Infrastructure.Data
         public DbSet<Location> Locations => Set<Location>();
         public DbSet<Match> Matches => Set<Match>();
         public DbSet<Message> Messages => Set<Message>();
+        public DbSet<PetMedia> PetMedia => Set<PetMedia>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -84,6 +85,15 @@ namespace SNIF.Infrastructure.Data
                 b.HasOne(m => m.Match)
                     .WithMany()
                     .HasForeignKey(m => m.MatchId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+            builder.Entity<PetMedia>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.Property(x => x.Id).ValueGeneratedOnAdd();
+                b.HasOne(m => m.Pet)
+                    .WithMany(p => p.Media)
+                    .HasForeignKey(m => m.PetId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using SNIF.Core.DTOs;
 using SNIF.Core.Enums;
 using SNIF.Core.Models;
 
@@ -12,6 +13,7 @@ namespace SNIF.Core.Entities
         {
             Purpose = new List<PetPurpose>();
             Personality = new List<string>();
+            Media = new List<PetMedia>();
             Photos = new List<string>();
             Videos = new List<string>();
         }
@@ -42,6 +44,7 @@ namespace SNIF.Core.Entities
         public virtual ICollection<string> Photos { get; set; }
 
         public virtual ICollection<string> Videos { get; set; }
+        public virtual ICollection<PetMedia> Media { get; set; }
 
         public Location? Location { get; set; }
 

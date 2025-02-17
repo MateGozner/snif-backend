@@ -26,8 +26,8 @@ namespace SNIF.Core.Specifications
         {
             AddInclude(u => u.Location!);
             AddInclude(u => u.Pets!);
-            AddInclude(u => u.Preferences!);
-            AddInclude(u => u.Preferences!.NotificationSettings);
+            AddInclude("Preferences");
+            AddInclude("Preferences.NotificationSettings");
         }
     }
 }

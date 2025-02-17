@@ -16,12 +16,12 @@ namespace SNIF.Core.DTOs
         public ICollection<PetPurpose> Purpose { get; init; } = new List<PetPurpose>();
         public ICollection<string> Personality { get; init; } = new List<string>();
         public MedicalHistoryDto? MedicalHistory { get; init; }
-        public ICollection<string> Photos { get; init; } = new List<string>();
-        public ICollection<string> Videos { get; init; } = new List<string>();
+        public ICollection<MediaResponseDto> Media { get; init; } = new List<MediaResponseDto>();
         public LocationDto? Location { get; init; }
         public string OwnerId { get; init; } = null!;
         public DateTime CreatedAt { get; init; }
         public DateTime? UpdatedAt { get; init; }
+        public IDictionary<string, string> Links { get; init; } = new Dictionary<string, string>();
     }
 
     public record CreatePetDto
@@ -46,9 +46,8 @@ namespace SNIF.Core.DTOs
         public ICollection<string> Personality { get; init; } = new List<string>();
         public CreateMedicalHistoryDto? MedicalHistory { get; init; }
         public LocationDto? Location { get; init; }
+        public ICollection<AddMediaDto>? Media { get; init; }
 
-        public IFormFileCollection? Photos { get; init; }
-        public IFormFileCollection? Videos { get; init; }
     }
 
     public record UpdatePetDto
@@ -72,6 +71,50 @@ namespace SNIF.Core.DTOs
         public LocationDto? Location { get; init; }
     }
 
+    public enum MediaType
+    {
+        Photo,
+        Video
+    }
+
+    public record MediaResponseDto
+    {
+        public string Id { get; init; } = null!;
+        public string Url { get; init; } = null!;
+        public MediaType Type { get; init; }
+        public string FileName { get; init; } = null!;
+        public string ContentType { get; init; } = null!;
+        public long Size { get; init; }
+        public string Title { get; init; } = null!;
+        public string? Description { get; init; }
+        public DateTime CreatedAt { get; init; }
+        public DateTime? UpdatedAt { get; init; }
+
+        public IDictionary<string, string> Links { get; init; } = new Dictionary<string, string>();
+    }
+
+    public record AddMediaDto
+    {
+        [Required]
+        [Base64String]
+        public string Base64Data { get; init; } = null!;
+
+        [Required]
+        [ValidMediaContentType]
+        public string ContentType { get; init; } = null!;
+
+        [Required]
+        public string FileName { get; init; } = null!;
+
+        [Required]
+        public MediaType Type { get; init; }
+
+        [StringLength(100)]
+        public string? Title { get; init; }
+
+        public string? Description { get; init; }
+    }
+
     public record MedicalHistoryDto
     {
         public bool IsVaccinated { get; init; }
@@ -86,6 +129,7 @@ namespace SNIF.Core.DTOs
         public bool IsVaccinated { get; init; }
         public ICollection<string> HealthIssues { get; init; } = new List<string>();
         public ICollection<string> VaccinationRecords { get; init; } = new List<string>();
+        public ICollection<AddMediaDto>? Media { get; init; }
         public DateTime? LastCheckup { get; init; }
         public string? VetContact { get; init; }
     }

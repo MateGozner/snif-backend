@@ -30,6 +30,8 @@ namespace SNIF.Core.Specifications
             AddInclude("TargetPet.Location");
             AddInclude("InitiatiorPet.MedicalHistory");
             AddInclude("TargetPet.MedicalHistory");
+            AddInclude("InitiatiorPet.Media");
+            AddInclude("TargetPet.Media");
         }
 
 

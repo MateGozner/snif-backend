@@ -60,7 +60,19 @@ namespace SNIF.Busniess.Services
                     UserName = createUserDto.Name,
                     Name = createUserDto.Name,
                     Location = location,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    Preferences = new UserPreferences
+                    {
+                        SearchRadius = 50,
+                        ShowOnlineStatus = true,
+                        CreatedAt = DateTime.UtcNow,
+                        NotificationSettings = new NotificationSettings
+                        {
+                            CreatedAt = DateTime.UtcNow,
+                            EmailNotifications = true,
+                            PushNotifications = true,
+                        }
+                    }
                 };
 
                 var result = await _userManager.CreateAsync(user, createUserDto.Password);

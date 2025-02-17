@@ -1,15 +1,18 @@
 // SNIF.API/Controllers/PetController.cs
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Formatters;
 using SNIF.API.Extensions;
 using SNIF.Core.DTOs;
+using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
 using System.Security.Claims;
+using MediaType = SNIF.Core.DTOs.MediaType;
 
 namespace SNIF.API.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/pets")]
     public class PetController : ControllerBase
     {
         private readonly IPetService _petService;
@@ -21,26 +24,21 @@ namespace SNIF.API.Controllers
             _environment = environment;
         }
 
-        [HttpGet("user/{userId}")]
+        [HttpGet]
         [ProducesResponseType(typeof(IEnumerable<PetDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult<IEnumerable<PetDto>>> GetUserPets(string userId)
+        public async Task<ActionResult<IEnumerable<PetDto>>> GetPets(
+            [FromQuery] string userId,
+            [FromQuery] PetPurpose? purpose,
+            [FromQuery] string? species)
         {
-            if (string.IsNullOrEmpty(userId))
-                return BadRequest(new ErrorResponse { Message = "User ID is required" });
-
             var pets = await _petService.GetUserPetsAsync(userId);
             return Ok(pets);
         }
 
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(PetDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PetDto>> GetPet(string id)
         {
-            if (string.IsNullOrEmpty(id))
-                return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
-
             try
             {
                 var pet = await _petService.GetPetByIdAsync(id);
@@ -53,27 +51,15 @@ namespace SNIF.API.Controllers
         }
 
         [HttpPost]
+        [Authorize]
         [ProducesResponseType(typeof(PetDto), StatusCodes.Status201Created)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<PetDto>> CreatePet(CreatePetDto createPetDto)
+        public async Task<ActionResult<PetDto>> CreatePet([FromBody] CreatePetDto createPetDto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(new ErrorResponse { Message = "Invalid pet data" });
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? throw new UnauthorizedAccessException();
 
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
-
-            try
-            {
-                var pet = await _petService.CreatePetAsync(userId, createPetDto);
-                return CreatedAtAction(nameof(GetPet), new { id = pet.Id }, pet);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new ErrorResponse { Message = ex.Message });
-            }
+            var pet = await _petService.CreatePetAsync(userId, createPetDto);
+            return CreatedAtAction(nameof(GetPet), new { id = pet.Id }, pet);
         }
 
 
@@ -119,101 +105,80 @@ namespace SNIF.API.Controllers
         }
 
 
-        [HttpPost("{id}/photos")]
-        public async Task<IActionResult> AddPhoto(string id, IFormFile photo)
+        [HttpPost("{id}/media")]
+        [Authorize]
+        [ProducesResponseType(typeof(MediaResponseDto), StatusCodes.Status201Created)]
+        public async Task<ActionResult<MediaResponseDto>> AddMedia(
+            string id,
+            [FromBody] AddMediaDto mediaDto)
         {
             try
             {
-                var fileName = await _petService.AddPetPhotoAsync(id, photo);
-                return Ok(new { FileName = fileName });
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                var result = await _petService.AddPetMediaAsync(id, mediaDto, baseUrl);
+                return CreatedAtAction(
+                    nameof(GetMediaInfo),
+                    new { id, mediaId = result.Id },
+                    result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
             }
             catch (KeyNotFoundException)
             {
-                return NotFound();
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
 
-        [HttpPost("{id}/videos")]
-        public async Task<IActionResult> AddVideo(string id, IFormFile video)
+        [HttpGet("{id}/media")]
+        [ProducesResponseType(typeof(IEnumerable<MediaResponseDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<IEnumerable<MediaResponseDto>>> GetMedia(
+            string id,
+            [FromQuery] MediaType? type)
         {
             try
             {
-                var fileName = await _petService.AddPetVideoAsync(id, video);
-                return Ok(new { FileName = fileName });
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                var media = await _petService.GetPetMediaAsync(id, type, baseUrl);
+                return Ok(media);
             }
             catch (KeyNotFoundException)
             {
-                return NotFound();
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
 
-        [HttpDelete("{id}/photos/{fileName}")]
-        public async Task<IActionResult> DeletePhoto(string id, string fileName)
+        [HttpGet("media/{mediaId}")]
+        [ProducesResponseType(typeof(MediaResponseDto), StatusCodes.Status200OK)]
+        public async Task<ActionResult<MediaResponseDto>> GetMediaInfo(string mediaId)
         {
             try
             {
-                await _petService.DeletePetPhotoAsync(id, fileName);
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                var media = await _petService.GetMediaByIdAsync(mediaId, baseUrl);
+                return Ok(media);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new ErrorResponse { Message = "Media not found" });
+            }
+        }
+
+        [HttpDelete("{id}/media/{mediaId}")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> DeleteMedia(string id, string mediaId)
+        {
+            try
+            {
+                await _petService.DeletePetMediaAsync(id, mediaId);
                 return NoContent();
             }
             catch (KeyNotFoundException)
             {
-                return NotFound();
+                return NotFound(new ErrorResponse { Message = "Media not found" });
             }
-        }
-
-        [HttpDelete("{id}/videos/{fileName}")]
-        public async Task<IActionResult> DeleteVideo(string id, string fileName)
-        {
-            try
-            {
-                await _petService.DeletePetVideoAsync(id, fileName);
-                return NoContent();
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFound();
-            }
-        }
-
-        [HttpGet("photos/{fileName}")]
-        public IActionResult GetPhoto(string fileName)
-        {
-            var path = Path.Combine(_environment.WebRootPath, "uploads", "pets", "photos", fileName);
-            if (!System.IO.File.Exists(path))
-            {
-                return NotFound();
-            }
-
-            var fileExtension = Path.GetExtension(fileName).ToLower();
-            var contentType = fileExtension switch
-            {
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".png" => "image/png",
-                ".gif" => "image/gif",
-                _ => "application/octet-stream"
-            };
-
-            return PhysicalFile(path, contentType);
-        }
-
-        [HttpGet("videos/{fileName}")]
-        public IActionResult GetVideo(string fileName)
-        {
-            var path = Path.Combine(_environment.WebRootPath, "uploads", "pets", "videos", fileName);
-            if (!System.IO.File.Exists(path))
-            {
-                return NotFound();
-            }
-
-            var fileExtension = Path.GetExtension(fileName).ToLower();
-            var contentType = fileExtension switch
-            {
-                ".mp4" => "video/mp4",
-                ".webm" => "video/webm",
-                _ => "application/octet-stream"
-            };
-
-            return PhysicalFile(path, contentType);
         }
     }
 }
