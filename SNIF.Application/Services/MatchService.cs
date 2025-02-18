@@ -125,15 +125,6 @@ namespace SNIF.Busniess.Services
                 initiatorOwner,
                 purpose);
 
-            // Send notifications
-            foreach (var (match, distance) in matches)
-            {
-                var notification = _mapper.Map<PetMatchNotification>(match);
-                notification.Distance = distance;
-
-                await _messagePublisher.PublishAsync("pet.matches.found", notification);
-            }
-
             return _mapper.Map<IEnumerable<PetDto>>(matches.Select(m => m.Pet));
         }
 

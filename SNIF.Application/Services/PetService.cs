@@ -344,6 +344,8 @@ namespace SNIF.Application.Services
 
         private async Task NotifyPotentialMatches(Pet newPet)
         {
+            await _messagePublisher.PublishPetCreatedAsync(newPet);
+
             var potentialMatches = await _petRepository.FindBySpecificationAsync(
                 new PetWithDetailsSpecification(p => p.Id != newPet.Id));
 
@@ -364,8 +366,11 @@ namespace SNIF.Application.Services
                 {
                     var notification = _mapper.Map<PetMatchNotification>(newPet);
                     notification.Distance = distance;
+                    notification.NotifiedAt = DateTime.UtcNow;
 
-                    await _messagePublisher.PublishAsync("pet.matches.found", notification);
+                    await _messagePublisher.PublishMatchNotificationAsync(
+                        existingPetOwner.Id,
+                        notification);
                 }
             }
         }

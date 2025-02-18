@@ -2,7 +2,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using RabbitMQ.Client;
+using SNIF.Core.Contracts;
+using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
+using SNIF.Core.Models;
 using SNIF.Messaging.Configuration;
 
 using System.Text;
@@ -15,6 +18,8 @@ namespace SNIF.Messaging.Services
         private readonly IConnection _connection;
         private readonly IModel _channel;
         private readonly ILogger<RabbitMQPublisher> _logger;
+        private const string WATCH_LIST_EXCHANGE = "pet.watchlist";
+        private const string MATCH_EXCHANGE = "pet.matches";
 
         public RabbitMQPublisher(IOptions<RabbitMQConfig> config, ILogger<RabbitMQPublisher> logger)
         {
@@ -39,37 +44,8 @@ namespace SNIF.Messaging.Services
                 _channel = _connection.CreateModel();
                 _logger.LogInformation("Successfully connected to RabbitMQ");
 
-                // Declare exchange with detailed logging
-                _logger.LogInformation("Declaring exchange '{ExchangeName}' of type 'topic'", _config.ExchangeName);
-                _channel.ExchangeDeclare(
-                    exchange: _config.ExchangeName,
-                    type: "topic",  // Explicitly use string instead of ExchangeType
-                    durable: true,
-                    autoDelete: false,
-                    arguments: null
-                );
-                _logger.LogInformation("Exchange '{ExchangeName}' declared successfully", _config.ExchangeName);
+                DeclareExchanges();
 
-                // Declare queue with detailed logging
-                _logger.LogInformation("Declaring queue '{QueueName}'", _config.QueueName);
-                _channel.QueueDeclare(
-                    queue: _config.QueueName,
-                    durable: true,
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null
-                );
-                _logger.LogInformation("Queue '{QueueName}' declared successfully", _config.QueueName);
-
-                // Bind queue to exchange
-                _logger.LogInformation("Binding queue '{QueueName}' to exchange '{ExchangeName}' with routing key 'pet.matches.*'",
-                    _config.QueueName, _config.ExchangeName);
-                _channel.QueueBind(
-                    queue: _config.QueueName,
-                    exchange: _config.ExchangeName,
-                    routingKey: "pet.matches.*"
-                );
-                _logger.LogInformation("Queue binding completed successfully");
             }
             catch (Exception ex)
             {
@@ -78,37 +54,135 @@ namespace SNIF.Messaging.Services
             }
         }
 
-        public async Task PublishAsync<T>(string routingKey, T message)
+
+        private void DeclareExchanges()
+        {
+            _channel.ExchangeDeclare(
+                exchange: WATCH_LIST_EXCHANGE,
+                type: "headers",
+                durable: true,
+                autoDelete: false
+            );
+
+            _channel.ExchangeDeclare(
+                exchange: MATCH_EXCHANGE,
+                type: "topic",
+                durable: true,
+                autoDelete: false
+            );
+        }
+
+        public async Task CreateWatchlistQueueForUser(string userId, UserPreferences preferences)
+        {
+            var queueName = $"watchlist.{userId}";
+            var headers = new Dictionary<string, object>
+            {
+                { "maxDistance", preferences.SearchRadius }
+            };
+
+
+            // Declare user-specific queue
+            _channel.QueueDeclare(
+                queue: queueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false
+            );
+
+            // Bind queue to watchlist exchange with headers
+            _channel.QueueBind(
+                queue: queueName,
+                exchange: WATCH_LIST_EXCHANGE,
+                routingKey: string.Empty,
+                arguments: headers
+            );
+
+            // Bind to match exchange for specific notifications
+            _channel.QueueBind(
+                queue: queueName,
+                exchange: MATCH_EXCHANGE,
+                routingKey: $"matches.{userId}.#"
+            );
+        }
+
+        public async Task PublishPetCreatedAsync(Pet pet)
         {
             try
             {
-                _logger.LogInformation("Publishing message with routing key '{RoutingKey}' to exchange '{ExchangeName}'",
-                    routingKey, _config.ExchangeName);
+                var petMessage = new
+                {
+                    pet.Id,
+                    pet.Species,
+                    pet.Breed,
+                    pet.Gender,
+                    pet.Purpose,
+                    Location = new
+                    {
+                        pet.Location.Latitude,
+                        pet.Location.Longitude
+                    },
+                    CreatedAt = DateTime.UtcNow
+                };
 
-                var json = JsonConvert.SerializeObject(message);
-                var body = Encoding.UTF8.GetBytes(json);
+                var headers = new Dictionary<string, object>
+                {
+                    { "species", pet.Species },
+                    { "purposes", string.Join(",", pet.Purpose) }
+                };
+
                 var properties = _channel.CreateBasicProperties();
+                properties.Headers = headers;
                 properties.Persistent = true;
                 properties.ContentType = "application/json";
+
+                var body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(petMessage));
 
                 await Task.Run(() =>
                 {
                     _channel.BasicPublish(
-                        exchange: _config.ExchangeName,
+                        exchange: WATCH_LIST_EXCHANGE,
+                        routingKey: string.Empty,
+                        basicProperties: properties,
+                        body: body
+                    );
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to publish pet created message for pet {PetId}", pet.Id);
+                throw;
+            }
+        }
+
+        public async Task PublishMatchNotificationAsync(string userId, PetMatchNotification notification)
+        {
+            try
+            {
+                var properties = _channel.CreateBasicProperties();
+                properties.Persistent = true;
+                properties.ContentType = "application/json";
+
+                var body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(notification));
+                var routingKey = $"matches.{userId}.{notification.MatchedPetId}";
+
+                await Task.Run(() =>
+                {
+                    _channel.BasicPublish(
+                        exchange: MATCH_EXCHANGE,
                         routingKey: routingKey,
                         basicProperties: properties,
                         body: body
                     );
                 });
-
-                _logger.LogInformation("Successfully published message with routing key '{RoutingKey}'", routingKey);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to publish message with routing key '{RoutingKey}'", routingKey);
+                _logger.LogError(ex, "Failed to publish match notification for user {UserId}", userId);
                 throw;
             }
         }
+
+
 
         private bool _disposed;
 
