@@ -1,0 +1,56 @@
+name: Deploy Backend to Azure Web App
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'SNIF.API/**'
+      - 'SNIF.Core/**'
+      - 'SNIF.Infrastructure/**'
+      - 'SNIF.Application/**'
+      - 'SNIF.Messaging/**'
+      - 'SNIF.SignalR/**'
+      - '.github/workflows/deploy-appservice.yml'
+  workflow_dispatch: {}
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore SNIF.sln
+
+      - name: Build
+        run: dotnet build SNIF.sln -c Release --no-restore
+
+      - name: Publish
+        run: dotnet publish ./SNIF.API/SNIF.API.csproj -c Release -o ./publish
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ./publish
