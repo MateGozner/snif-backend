@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SNIF.Infrastructure.Data;
 using SNIF.SignalR.Hubs;
+using System.Collections;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,17 +11,29 @@ builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddSwaggerServices();
 builder.Services.AddIdentityServices(builder.Configuration);
 
-// Configure static files
-var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-Directory.CreateDirectory(webRootPath);
-Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "profiles"));
-Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "pets", "photos"));
-Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "pets", "videos"));
-builder.WebHost.UseWebRoot(webRootPath);
+// Static files will use the default web root. We'll ensure required directories exist after building the app.
 
-// Configure PostgreSQL
-builder.Services.AddDbContext<SNIFContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Configure PostgreSQL with fallback to App Service connection string env vars
+string? connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    foreach (DictionaryEntry envVar in Environment.GetEnvironmentVariables())
+    {
+        var key = envVar.Key?.ToString() ?? string.Empty;
+        if (key.StartsWith("POSTGRESQLCONNSTR_", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionString = envVar.Value?.ToString();
+            break;
+        }
+        if (connectionString is null && key.StartsWith("CUSTOMCONNSTR_", StringComparison.OrdinalIgnoreCase))
+        {
+            // Fallback for custom connection strings if provider uses CUSTOMCONNSTR_
+            connectionString = envVar.Value?.ToString();
+        }
+    }
+}
+
+builder.Services.AddDbContext<SNIFContext>(options => options.UseNpgsql(connectionString));
 
 // Add CORS - Configurable policy via configuration
 builder.Services.AddCors(options =>
@@ -48,6 +61,13 @@ if (swaggerEnabled)
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Ensure upload directories exist under the resolved web root
+var env = app.Environment;
+var resolvedWebRoot = env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+Directory.CreateDirectory(Path.Combine(resolvedWebRoot, "uploads", "profiles"));
+Directory.CreateDirectory(Path.Combine(resolvedWebRoot, "uploads", "pets", "photos"));
+Directory.CreateDirectory(Path.Combine(resolvedWebRoot, "uploads", "pets", "videos"));
 
 // Apply database migrations automatically on startup
 using (var scope = app.Services.CreateScope())
