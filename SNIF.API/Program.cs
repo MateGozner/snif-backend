@@ -22,25 +22,38 @@ builder.WebHost.UseWebRoot(webRootPath);
 builder.Services.AddDbContext<SNIFContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add CORS - Single policy
+// Add CORS - Configurable policy via configuration
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("CorsPolicy",
-        builder => builder
-            .WithOrigins("http://localhost:3000")
+    options.AddPolicy("CorsPolicy", policyBuilder =>
+    {
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                            ?? new[] { "http://localhost:3000" };
+
+        policyBuilder
+            .WithOrigins(allowedOrigins)
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials()
-            .WithExposedHeaders("Authorization")); // Add this line
+            .WithExposedHeaders("Authorization");
+    });
 });
 
 var app = builder.Build();
 
 // Configure middleware pipeline
-if (app.Environment.IsDevelopment())
+var swaggerEnabled = app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Swagger:Enabled");
+if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+// Apply database migrations automatically on startup
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<SNIFContext>();
+    context.Database.Migrate();
 }
 
 // The order of middleware is important

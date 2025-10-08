@@ -56,9 +56,17 @@ public static class ServiceExtensions
         // API Explorer for Swagger
         services.AddEndpointsApiExplorer();
 
-        // Add RabbitMQ services
+        // Messaging configuration (RabbitMQ optional)
         services.Configure<RabbitMQConfig>(config.GetSection("RabbitMQ"));
-        services.AddScoped<IMessagePublisher, RabbitMQPublisher>();
+        var rabbitEnabled = config.GetValue<bool>("RabbitMQ:Enabled");
+        if (rabbitEnabled)
+        {
+            services.AddScoped<IMessagePublisher, RabbitMQPublisher>();
+        }
+        else
+        {
+            services.AddScoped<IMessagePublisher, NoopMessagePublisher>();
+        }
 
         return services;
     }
