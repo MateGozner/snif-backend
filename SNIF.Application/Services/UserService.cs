@@ -78,7 +78,8 @@ namespace SNIF.Busniess.Services
                 var result = await _userManager.CreateAsync(user, createUserDto.Password);
                 if (!result.Succeeded)
                 {
-                    throw new Exception("Failed to create user");
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    throw new Exception($"Failed to create user: {errors}");
                 }
 
                 await transaction.CommitAsync();
@@ -134,11 +135,11 @@ namespace SNIF.Busniess.Services
                 .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
 
             if (user == null)
-                throw new UnauthorizedAccessException("Invalid email");
+                throw new UnauthorizedAccessException("Invalid email or password");
 
             var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
             if (!result.Succeeded)
-                throw new UnauthorizedAccessException("Invalid password");
+                throw new UnauthorizedAccessException("Invalid email or password");
 
             if (loginDto.Location != null)
                 await UpdateUserLocation(user.Id, loginDto.Location);
