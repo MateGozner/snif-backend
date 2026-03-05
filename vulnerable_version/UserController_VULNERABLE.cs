@@ -4,10 +4,15 @@ using SNIF.Core.DTOs;
 using SNIF.Core.Interfaces;
 using Microsoft.Net.Http.Headers;
 using SNIF.API.Extensions;
-using System.Security.Claims;
 
 namespace SNIF.API.Controllers
 {
+    /// <summary>
+    /// SÉRÜLÉKENY VERZIÓ - NE HASZNÁLD ÉLES KÖRNYEZETBEN!
+    /// 
+    /// Ez a fájl az eredeti sérülékeny kódot tartalmazza demonstrációs célból.
+    /// A probléma: nincs tulajdonjog ellenőrzés a felhasználó módosító végpontokon.
+    /// </summary>
     [ApiController]
     [Route("api/users")]
     public class UserController : ControllerBase
@@ -62,17 +67,6 @@ namespace SNIF.API.Controllers
             }
         }
 
-        // DELETE api/users/token
-        [Authorize]
-        [HttpDelete("token")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public async Task<ActionResult> DeleteToken()
-        {
-            await _userService.LogoutUser();
-            Response.Headers.Append("Cache-Control", "no-store");
-            return NoContent();
-        }
-
         // GET api/users/{id}
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
@@ -91,16 +85,22 @@ namespace SNIF.API.Controllers
             }
         }
 
-        // PUT api/users/{id}
+        // ============================================================
+        // SÉRÜLÉKENY VÉGPONT #1: UpdateUser
+        // ============================================================
+        // PROBLÉMA: Bármely hitelesített felhasználó módosíthatja 
+        // BÁRMELY más felhasználó profilját!
+        // ============================================================
         [Authorize]
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<UserDto>> UpdateUser(string id, UpdateUserDto updateUserDto)
         {
-            //  Security Fix: Ownership verification to prevent IDOR
-
+            // !!! HIÁNYZIK: Tulajdonjog ellenőrzés !!!
+            // var authUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            // if (authUserId != id)
+            //     return Forbid();
             
             try
             {
@@ -114,19 +114,16 @@ namespace SNIF.API.Controllers
             }
         }
 
-        // PUT api/users/{id}/picture
+        // ============================================================
+        // SÉRÜLÉKENY VÉGPONT #2: UpdateUserPicture
+        // ============================================================
         [Authorize]
         [HttpPut("{id}/picture")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<UserDto>> UpdateUserPicture(string id, UpdateProfilePictureDto pictureDto)
         {
-            // Security Fix: Ownership verification to prevent IDOR
-            var authUserId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (authUserId != id)
-                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only modify your own profile picture" });
-
+            // !!! HIÁNYZIK: Tulajdonjog ellenőrzés !!!
             try
             {
                 var updatedProfile = await _userService.UpdateUserProfilePicture(id, pictureDto);
@@ -138,7 +135,6 @@ namespace SNIF.API.Controllers
                 return NotFound(new ErrorResponse { Message = ex.Message });
             }
         }
-
 
         // GET api/users/{id}/picture
         [HttpGet("{id}/picture")]
@@ -160,19 +156,16 @@ namespace SNIF.API.Controllers
             }
         }
 
-        // PUT api/users/{id}/preferences
+        // ============================================================
+        // SÉRÜLÉKENY VÉGPONT #3: UpdateUserPreferences
+        // ============================================================
         [Authorize]
         [HttpPut("{id}/preferences")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<UserDto>> UpdateUserPreferences(string id, UpdatePreferencesDto preferencesDto)
         {
-            // Security Fix: Ownership verification to prevent IDOR
-            var authUserId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (authUserId != id)
-                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only modify your own preferences" });
-
+            // !!! HIÁNYZIK: Tulajdonjog ellenőrzés !!!
             try
             {
                 var updatedUser = await _userService.UpdateUserPreferences(id, preferencesDto);
@@ -182,24 +175,6 @@ namespace SNIF.API.Controllers
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new ErrorResponse { Message = ex.Message });
-            }
-        }
-
-        // POST api/users/token/validate
-        [HttpPost("token/validate")]
-        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<AuthResponseDto>> ValidateToken([FromBody] TokenValidationDto tokenDto)
-        {
-            try
-            {
-                var response = await _userService.ValidateAndRefreshTokenAsync(tokenDto.Token);
-                Response.Headers.Append("Cache-Control", "no-store");
-                return Ok(response);
-            }
-            catch (Exception ex)
-            {
-                return Unauthorized(new ErrorResponse { Message = ex.Message });
             }
         }
     }

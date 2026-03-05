@@ -1,4 +1,3 @@
-// SNIF.API/Controllers/PetController.cs
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Formatters;
@@ -11,6 +10,14 @@ using MediaType = SNIF.Core.DTOs.MediaType;
 
 namespace SNIF.API.Controllers
 {
+    /// <summary>
+    /// SÉRÜLÉKENY VERZIÓ - NE HASZNÁLD ÉLES KÖRNYEZETBEN!
+    /// 
+    /// Problémák:
+    /// 1. UpdatePet - nincs [Authorize] attribútum
+    /// 2. DeletePet - nincs [Authorize] attribútum
+    /// 3. Egyik sem ellenőrzi a tulajdonjogot
+    /// </summary>
     [ApiController]
     [Route("api/pets")]
     public class PetController : ControllerBase
@@ -62,12 +69,15 @@ namespace SNIF.API.Controllers
             return CreatedAtAction(nameof(GetPet), new { id = pet.Id }, pet);
         }
 
-
-        [Authorize]
-        [HttpPut("{id}")]
+        // ============================================================
+        // SÉRÜLÉKENY VÉGPONT #1: UpdatePet
+        // ============================================================
+        // PROBLÉMA 1: Nincs [Authorize] attribútum - bárki hívhatja!
+        // PROBLÉMA 2: Nincs tulajdonjog ellenőrzés
+        // ============================================================
+        [HttpPut("{id}")]  // !!! HIÁNYZIK: [Authorize] !!!
         [ProducesResponseType(typeof(PetDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PetDto>> UpdatePet(string id, [FromBody] UpdatePetDto updatePetDto)
         {
             if (string.IsNullOrEmpty(id))
@@ -76,13 +86,14 @@ namespace SNIF.API.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(new ErrorResponse { Message = "Invalid update data" });
 
-            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // !!! HIÁNYZIK: Tulajdonjog ellenőrzés !!!
+            // var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // var existingPet = await _petService.GetPetByIdAsync(id);
+            // if (existingPet.OwnerId != authUserId)
+            //     return Forbid();
+
             try
             {
-                var existingPet = await _petService.GetPetByIdAsync(id);
-                if (existingPet.OwnerId != authUserId)
-                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only modify your own pets" });
-
                 var pet = await _petService.UpdatePetAsync(id, updatePetDto);
                 return Ok(pet);
             }
@@ -92,24 +103,25 @@ namespace SNIF.API.Controllers
             }
         }
 
-        [Authorize]
-        [HttpDelete("{id}")]
+        // ============================================================
+        // SÉRÜLÉKENY VÉGPONT #2: DeletePet
+        // ============================================================
+        // PROBLÉMA 1: Nincs [Authorize] attribútum - bárki hívhatja!
+        // PROBLÉMA 2: Nincs tulajdonjog ellenőrzés
+        // ============================================================
+        [HttpDelete("{id}")]  // !!! HIÁNYZIK: [Authorize] !!!
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> DeletePet(string id)
         {
             if (string.IsNullOrEmpty(id))
                 return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
 
-            // Security Fix: Verify ownership before allowing delete
-            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // !!! HIÁNYZIK: Tulajdonjog ellenőrzés !!!
+            // Bárki törölhet bármilyen kedvencet!
+
             try
             {
-                var existingPet = await _petService.GetPetByIdAsync(id);
-                if (existingPet.OwnerId != authUserId)
-                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only delete your own pets" });
-
                 await _petService.DeletePetAsync(id);
                 return NoContent();
             }
@@ -118,7 +130,6 @@ namespace SNIF.API.Controllers
                 return NotFound(new ErrorResponse { Message = "Pet not found" });
             }
         }
-
 
         [HttpPost("{id}/media")]
         [Authorize]
