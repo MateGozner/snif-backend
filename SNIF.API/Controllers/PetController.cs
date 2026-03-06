@@ -195,5 +195,51 @@ namespace SNIF.API.Controllers
                 return NotFound(new ErrorResponse { Message = "Media not found" });
             }
         }
+
+        [HttpGet("{petId}/discovery-preferences")]
+        [Authorize]
+        [ProducesResponseType(typeof(DiscoveryPreferencesDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<DiscoveryPreferencesDto>> GetDiscoveryPreferences(string petId)
+        {
+            try
+            {
+                var prefs = await _petService.GetDiscoveryPreferencesAsync(petId);
+                return Ok(prefs);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
+            }
+        }
+
+        [HttpPut("{petId}/discovery-preferences")]
+        [Authorize]
+        [ProducesResponseType(typeof(DiscoveryPreferencesDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<DiscoveryPreferencesDto>> UpdateDiscoveryPreferences(
+            string petId,
+            [FromBody] UpdateDiscoveryPreferencesDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid preferences data" });
+
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            try
+            {
+                var existingPet = await _petService.GetPetByIdAsync(petId);
+                if (existingPet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new ErrorResponse { Message = "You can only modify your own pet's preferences" });
+
+                var prefs = await _petService.UpdateDiscoveryPreferencesAsync(petId, dto);
+                return Ok(prefs);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
+            }
+        }
     }
 }

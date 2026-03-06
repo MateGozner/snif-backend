@@ -12,6 +12,7 @@ namespace SNIF.Infrastructure.Data
         public DbSet<Pet> Pets => Set<Pet>();
         public DbSet<BreederVerification> BreederVerifications => Set<BreederVerification>();
         public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+        public DbSet<DiscoveryPreferences> DiscoveryPreferences => Set<DiscoveryPreferences>();
         public DbSet<Location> Locations => Set<Location>();
         public DbSet<Match> Matches => Set<Match>();
         public DbSet<Message> Messages => Set<Message>();
@@ -94,6 +95,16 @@ namespace SNIF.Infrastructure.Data
                 b.HasOne(m => m.Pet)
                     .WithMany(p => p.Media)
                     .HasForeignKey(m => m.PetId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<DiscoveryPreferences>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.Property(x => x.Id).ValueGeneratedOnAdd();
+                b.HasOne(d => d.Pet)
+                    .WithOne(p => p.DiscoveryPreferences)
+                    .HasForeignKey<DiscoveryPreferences>(d => d.PetId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
         }

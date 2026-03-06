@@ -46,25 +46,16 @@ namespace SNIF.SignalR.Hubs
             // Notify both parties that call was accepted
             await Clients.Group(roomId).SendAsync("CallAccepted", matchId);
 
-            // Tell the caller to start the WebRTC offer
-            await Clients.User(callerId).SendAsync("InitiateWebRTCOffer", matchId);
-
             _logger.LogInformation($"Call accepted: Caller={callerId}, Receiver={receiverId}, Match={matchId}");
         }
 
-        public async Task SendSignal(string matchId, string signal, string type)
+        public async Task SendSignal(string matchId, string receiverId, string signal)
         {
             var userId = Context.UserIdentifier;
-            var roomId = $"{RoomPrefix}{matchId}";
 
-            if (_activeCallRoles.TryGetValue(matchId, out var roles))
-            {
-                // Log who is sending signals to help debug
-                var senderRole = userId == roles.CallerId ? "Caller" : "Receiver";
-                _logger.LogInformation($"Signal sent: Type={type}, From={senderRole}, User={userId}, Room={roomId}");
-            }
+            _logger.LogInformation($"Signal sent: From={userId}, To={receiverId}, Match={matchId}");
 
-            await Clients.OthersInGroup(roomId).SendAsync("ReceiveSignal", signal, type);
+            await Clients.User(receiverId).SendAsync("ReceiveSignal", signal);
         }
 
         public async Task EndCall(string matchId)

@@ -8,6 +8,7 @@ using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
 using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
+using SNIF.Core.Models;
 using SNIF.Core.Specifications;
 using SNIF.Infrastructure.Repository;
 
@@ -18,6 +19,7 @@ namespace SNIF.Application.Services
         private readonly IRepository<Pet> _petRepository;
         private readonly IRepository<Match> _matchRepository;
         private readonly IRepository<PetMedia> _mediaRepository;
+        private readonly IRepository<DiscoveryPreferences> _discoveryPrefsRepository;
         private readonly IMapper _mapper;
         private readonly IWebHostEnvironment _environment;
         private readonly IRepository<User> _userManager;
@@ -32,7 +34,8 @@ namespace SNIF.Application.Services
             IRepository<User> userManager,
             IMessagePublisher messagePublisher,
             IMatchingLogicService matchingLogic,
-            IRepository<PetMedia> mediaRepository)
+            IRepository<PetMedia> mediaRepository,
+            IRepository<DiscoveryPreferences> discoveryPrefsRepository)
         {
             _petRepository = petRepository;
             _matchRepository = matchRepository;
@@ -42,6 +45,7 @@ namespace SNIF.Application.Services
             _messagePublisher = messagePublisher;
             _matchingLogic = matchingLogic;
             _mediaRepository = mediaRepository;
+            _discoveryPrefsRepository = discoveryPrefsRepository;
         }
 
         public async Task<IEnumerable<PetDto>> GetUserPetsAsync(string userId)
@@ -373,6 +377,92 @@ namespace SNIF.Application.Services
                         notification);
                 }
             }
+        }
+
+        public async Task<DiscoveryPreferencesDto> GetDiscoveryPreferencesAsync(string petId)
+        {
+            _ = await _petRepository.GetByIdAsync(petId)
+                ?? throw new KeyNotFoundException($"Pet with ID {petId} not found");
+
+            var existing = await _discoveryPrefsRepository.FindAsync(d => d.PetId == petId);
+            var prefs = existing.FirstOrDefault();
+
+            if (prefs == null)
+            {
+                return new DiscoveryPreferencesDto
+                {
+                    PetId = petId,
+                    AllowOtherBreeds = true,
+                    AllowOtherSpecies = false,
+                };
+            }
+
+            return new DiscoveryPreferencesDto
+            {
+                Id = prefs.Id,
+                PetId = prefs.PetId,
+                AllowOtherBreeds = prefs.AllowOtherBreeds,
+                AllowOtherSpecies = prefs.AllowOtherSpecies,
+                MinAge = prefs.MinAge,
+                MaxAge = prefs.MaxAge,
+                PreferredGender = prefs.PreferredGender,
+                PreferredPurposes = prefs.PreferredPurposes?
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .ToList(),
+            };
+        }
+
+        public async Task<DiscoveryPreferencesDto> UpdateDiscoveryPreferencesAsync(string petId, UpdateDiscoveryPreferencesDto dto)
+        {
+            _ = await _petRepository.GetByIdAsync(petId)
+                ?? throw new KeyNotFoundException($"Pet with ID {petId} not found");
+
+            var existing = await _discoveryPrefsRepository.FindAsync(d => d.PetId == petId);
+            var prefs = existing.FirstOrDefault();
+
+            if (prefs == null)
+            {
+                prefs = new DiscoveryPreferences
+                {
+                    PetId = petId,
+                    AllowOtherBreeds = dto.AllowOtherBreeds,
+                    AllowOtherSpecies = dto.AllowOtherSpecies,
+                    MinAge = dto.MinAge,
+                    MaxAge = dto.MaxAge,
+                    PreferredGender = dto.PreferredGender,
+                    PreferredPurposes = dto.PreferredPurposes != null
+                        ? string.Join(",", dto.PreferredPurposes)
+                        : null,
+                    CreatedAt = DateTime.UtcNow,
+                };
+                await _discoveryPrefsRepository.AddAsync(prefs);
+            }
+            else
+            {
+                prefs.AllowOtherBreeds = dto.AllowOtherBreeds;
+                prefs.AllowOtherSpecies = dto.AllowOtherSpecies;
+                prefs.MinAge = dto.MinAge;
+                prefs.MaxAge = dto.MaxAge;
+                prefs.PreferredGender = dto.PreferredGender;
+                prefs.PreferredPurposes = dto.PreferredPurposes != null
+                    ? string.Join(",", dto.PreferredPurposes)
+                    : null;
+                prefs.UpdatedAt = DateTime.UtcNow;
+                await _discoveryPrefsRepository.UpdateAsync(prefs);
+            }
+
+            return new DiscoveryPreferencesDto
+            {
+                Id = prefs.Id,
+                PetId = prefs.PetId,
+                AllowOtherBreeds = prefs.AllowOtherBreeds,
+                AllowOtherSpecies = prefs.AllowOtherSpecies,
+                MinAge = prefs.MinAge,
+                MaxAge = prefs.MaxAge,
+                PreferredGender = prefs.PreferredGender,
+                PreferredPurposes = dto.PreferredPurposes,
+            };
         }
     }
 }

@@ -6,7 +6,7 @@ namespace SNIF.Core.Mappings
 {
     public class PetMappingProfile : Profile
     {
-        private const string BaseUrl = "http://localhost:5000";
+        private const string BaseUrl = "http://localhost:5001";
         public PetMappingProfile()
         {
             CreateMap<Pet, PetDto>()
@@ -28,7 +28,9 @@ namespace SNIF.Core.Mappings
 
             CreateMap<PetMedia, MediaResponseDto>()
                 .ForMember(dest => dest.Url, opt => opt.MapFrom((src, _, _, context) =>
-                $"{BaseUrl}/uploads/pets/{(src.Type == MediaType.Photo ? "photos" : "videos")}/{src.FileName}"))
+                src.FileName.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? src.FileName
+                    : $"{BaseUrl}/uploads/pets/{(src.Type == MediaType.Photo ? "photos" : "videos")}/{src.FileName}"))
                 .ForMember(dest => dest.Links, opt => opt.MapFrom((src, _, _, context) =>
                     new Dictionary<string, string>
                     {

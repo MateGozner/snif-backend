@@ -44,7 +44,10 @@ builder.Services.AddCors(options =>
                             ?? new[] { "http://localhost:3000" };
 
         policyBuilder
-            .WithOrigins(allowedOrigins)
+            .SetIsOriginAllowed(origin => {
+                var uri = new Uri(origin);
+                return uri.Host == "localhost" || uri.Host == "127.0.0.1" || allowedOrigins.Contains(origin);
+            })
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials()
@@ -74,6 +77,9 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<SNIFContext>();
     context.Database.Migrate();
+
+    // Seed database with test data if empty
+    await DatabaseSeeder.SeedAsync(scope.ServiceProvider);
 }
 
 // The order of middleware is important

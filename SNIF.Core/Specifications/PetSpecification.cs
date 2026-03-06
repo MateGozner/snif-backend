@@ -11,6 +11,7 @@ namespace SNIF.Core.Specifications
             AddInclude(x => x.MedicalHistory!);
             AddInclude(x => x.Location!);
             AddInclude(x => x.Media);
+            AddInclude(x => x.DiscoveryPreferences!);
         }
 
         public PetWithDetailsSpecification(Expression<Func<Pet, bool>> criteria)
@@ -19,6 +20,7 @@ namespace SNIF.Core.Specifications
             AddInclude(x => x.MedicalHistory!);
             AddInclude(x => x.Location!);
             AddInclude(x => x.Media);
+            AddInclude(x => x.DiscoveryPreferences!);
         }
     }
 

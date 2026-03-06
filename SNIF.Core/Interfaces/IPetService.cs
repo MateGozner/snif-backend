@@ -15,6 +15,7 @@ namespace SNIF.Core.Interfaces
         Task<IEnumerable<MediaResponseDto>> GetPetMediaAsync(string petId, MediaType? type = null, string baseUrl = "");
         Task<MediaResponseDto> GetMediaByIdAsync(string mediaId, string baseUrl);
         Task DeletePetMediaAsync(string petId, string mediaId);
-
+        Task<DiscoveryPreferencesDto> GetDiscoveryPreferencesAsync(string petId);
+        Task<DiscoveryPreferencesDto> UpdateDiscoveryPreferencesAsync(string petId, UpdateDiscoveryPreferencesDto dto);
     }
 }

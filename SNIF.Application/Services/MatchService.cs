@@ -88,8 +88,9 @@ namespace SNIF.Busniess.Services
         {
             var matches = await _matchRepository.FindBySpecificationAsync(
                 new MatchWithDetailsSpecification(m =>
-                    m.InitiatiorPetId == petId ||
-                    m.TargetPetId == petId));
+                    (m.InitiatiorPetId == petId ||
+                    m.TargetPetId == petId) &&
+                    m.Status == MatchStatus.Accepted));
 
             return _mapper.Map<IEnumerable<MatchDto>>(matches);
         }

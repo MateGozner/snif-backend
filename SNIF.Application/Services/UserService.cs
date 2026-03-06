@@ -48,11 +48,14 @@ namespace SNIF.Busniess.Services
 
             try
             {
-                var location = _mapper.Map<Location>(createUserDto.Location);
-                location.CreatedAt = DateTime.UtcNow;
-
-                _context.Locations.Add(location);
-                await _context.SaveChangesAsync();
+                Location? location = null;
+                if (createUserDto.Location != null)
+                {
+                    location = _mapper.Map<Location>(createUserDto.Location);
+                    location.CreatedAt = DateTime.UtcNow;
+                    _context.Locations.Add(location);
+                    await _context.SaveChangesAsync();
+                }
 
                 var user = new User
                 {
@@ -151,7 +154,9 @@ namespace SNIF.Busniess.Services
 
         public async Task LogoutUser()
         {
-            await _signInManager.SignOutAsync();
+            // JWT tokens are stateless - logout is handled client-side
+            // by clearing the stored token
+            await Task.CompletedTask;
         }
 
         public async Task<UserDto> UpdateUserPersonalInfo(string userId, UpdateUserDto updateUserPersonalInfoDto)
@@ -263,6 +268,20 @@ namespace SNIF.Busniess.Services
                 if (user.Preferences != null)
                 {
                     user.Preferences.UserId = userId;
+                    // Ensure NotificationSettings always exists to satisfy FK
+                    if (user.Preferences.NotificationSettings == null)
+                    {
+                        user.Preferences.NotificationSettings = new NotificationSettings
+                        {
+                            CreatedAt = DateTime.UtcNow,
+                            EmailNotifications = true,
+                            PushNotifications = true,
+                            NewMatchNotifications = true,
+                            MessageNotifications = true,
+                            BreedingRequestNotifications = true,
+                            PlaydateRequestNotifications = true,
+                        };
+                    }
                 }
             }
             else

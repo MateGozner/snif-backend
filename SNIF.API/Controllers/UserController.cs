@@ -39,6 +39,10 @@ namespace SNIF.API.Controllers
             {
                 return BadRequest(new ErrorResponse { Message = e.Message });
             }
+            catch (Exception e)
+            {
+                return BadRequest(new ErrorResponse { Message = e.Message });
+            }
         }
 
         // POST api/users/token
@@ -99,9 +103,11 @@ namespace SNIF.API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<UserDto>> UpdateUser(string id, UpdateUserDto updateUserDto)
         {
-            //  Security Fix: Ownership verification to prevent IDOR
+            // Security Fix: Ownership verification to prevent IDOR
+            var authUserId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            if (authUserId != id)
+                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only modify your own profile" });
 
-            
             try
             {
                 var updatedProfile = await _userService.UpdateUserPersonalInfo(id, updateUserDto);
@@ -178,6 +184,25 @@ namespace SNIF.API.Controllers
                 var updatedUser = await _userService.UpdateUserPreferences(id, preferencesDto);
                 Response.Headers.Append("Cache-Control", "no-cache");
                 return Ok(updatedUser);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        // GET api/users/{id}/preferences
+        [Authorize]
+        [HttpGet("{id}/preferences")]
+        [ProducesResponseType(typeof(PreferencesDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<PreferencesDto>> GetUserPreferences(string id)
+        {
+            try
+            {
+                var user = await _userService.GetUserProfileById(id);
+                Response.Headers.Append("Cache-Control", "private, max-age=300");
+                return Ok(user.Preferences ?? new PreferencesDto());
             }
             catch (KeyNotFoundException ex)
             {
