@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using SNIF.Core.Constants;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
 using SNIF.Core.Enums;
@@ -15,6 +16,21 @@ public static class DatabaseSeeder
     {
         var context = serviceProvider.GetRequiredService<SNIFContext>();
         var userManager = serviceProvider.GetRequiredService<UserManager<User>>();
+        var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+
+        // Seed roles (always idempotent)
+        await SeedRolesAsync(roleManager);
+
+        // Seed default admin user
+        await SeedAdminUserAsync(userManager);
+
+        // Seed Animal Breeds
+        if (!context.AnimalBreeds.Any())
+        {
+            var breedsToSeed = SeedAnimalBreeds();
+            context.AnimalBreeds.AddRange(breedsToSeed);
+            await context.SaveChangesAsync();
+        }
 
         // Idempotency check
         if (context.Users.Count() > 1)
@@ -42,6 +58,42 @@ public static class DatabaseSeeder
         var messages = SeedMessages(matches, users, pets);
         context.Messages.AddRange(messages);
         await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager)
+    {
+        foreach (var role in AppRoles.All)
+        {
+            if (!await roleManager.RoleExistsAsync(role))
+            {
+                await roleManager.CreateAsync(new IdentityRole(role));
+            }
+        }
+    }
+
+    private static async Task SeedAdminUserAsync(UserManager<User> userManager)
+    {
+        const string adminEmail = "admin@snif.app";
+        var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
+
+        if (existingAdmin == null)
+        {
+            var admin = new User
+            {
+                UserName = adminEmail,
+                Email = adminEmail,
+                EmailConfirmed = true,
+                Name = "SNIF Admin",
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            var result = await userManager.CreateAsync(admin, "Admin1234!");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(admin, AppRoles.SuperAdmin);
+                await userManager.AddToRoleAsync(admin, AppRoles.Admin);
+            }
+        }
     }
 
     private static async Task<List<User>> SeedUsersAsync(UserManager<User> userManager)
@@ -421,6 +473,77 @@ public static class DatabaseSeeder
 
     private static readonly string[] BirdBreeds =
         { "Budgerigar", "Cockatiel", "Lovebird", "Canary", "Parrot" };
+
+    private static List<AnimalBreed> SeedAnimalBreeds()
+    {
+        var breeds = new List<AnimalBreed>();
+
+        void AddBreeds(string species, string[] breedList)
+        {
+            foreach (var b in breedList)
+            {
+                breeds.Add(new AnimalBreed
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Species = species,
+                    Name = b,
+                    IsCustom = false,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        AddBreeds("Dog", new[] {
+            "Affenpinscher", "Afghan Hound", "Airedale Terrier", "Akita", "Alaskan Malamute", "American Bulldog",
+            "American Pit Bull Terrier", "American Staffordshire Terrier", "Australian Cattle Dog", "Australian Shepherd",
+            "Basset Hound", "Beagle", "Belgian Malinois", "Bernese Mountain Dog", "Bichon Frise", "Bloodhound",
+            "Border Collie", "Boston Terrier", "Boxer", "Bulldog", "Bullmastiff", "Cane Corso", "Cavalier King Charles Spaniel",
+            "Chihuahua", "Chow Chow", "Cocker Spaniel", "Collie", "Corgi", "Dachshund", "Dalmatian", "Doberman Pinscher",
+            "English Springer Spaniel", "French Bulldog", "German Shepherd", "German Shorthaired Pointer", "Golden Retriever",
+            "Great Dane", "Great Pyrenees", "Greyhound", "Havanese", "Husky", "Jack Russell Terrier", "Labrador Retriever",
+            "Maltese", "Mastiff", "Miniature Schnauzer", "Newfoundland", "Papillon", "Pekingese", "Pomeranian", "Poodle",
+            "Pug", "Rhodesian Ridgeback", "Rottweiler", "Saint Bernard", "Samoyed", "Shetland Sheepdog", "Shiba Inu",
+            "Shih Tzu", "Siberian Husky", "Staffordshire Bull Terrier", "Vizsla", "Weimaraner", "Whippet", "Yorkshire Terrier",
+            "Mixed / Mutt"
+        });
+
+        AddBreeds("Cat", new[] {
+            "Abyssinian", "American Bobtail", "American Curl", "American Shorthair", "American Wirehair", "Balinese",
+            "Bengal", "Birman", "Bombay", "British Shorthair", "Burmese", "Burmilla", "Chartreux", "Colorpoint Shorthair",
+            "Cornish Rex", "Devon Rex", "Egyptian Mau", "European Shorthair", "Exotic Shorthair", "Havana Brown",
+            "Himalayan", "Japanese Bobtail", "Khao Manee", "Korat", "LaPerm", "Lykoi", "Maine Coon", "Manx",
+            "Munchkin", "Nebelung", "Norwegian Forest Cat", "Ocicat", "Oriental", "Persian", "Peterbald", "Pixiebob",
+            "Ragamuffin", "Ragdoll", "Russian Blue", "Savannah", "Scottish Fold", "Selkirk Rex", "Siamese", "Siberian",
+            "Singapura", "Snowshoe", "Somali", "Sphynx", "Tonkinese", "Toyger", "Turkish Angora", "Turkish Van",
+            "Domestic Shorthair (Mixed)", "Domestic Mediumhair (Mixed)", "Domestic Longhair (Mixed)"
+        });
+
+        AddBreeds("Rabbit", new[] {
+            "American", "American Chinchilla", "American Fuzzy Lop", "Angora", "Belgian Hare", "Beveren",
+            "Blanc de Hotot", "Britannia Petite", "Californian", "Champagne d'Argent", "Checkered Giant",
+            "Cinnamon", "Dutch", "Dwarf Hotot", "English Lop", "English Spot", "Flemish Giant", "Florida White",
+            "French Lop", "Harlequin", "Havana", "Himalayan", "Holland Lop", "Jersey Wooly", "Lilac", "Lionhead",
+            "Mini Lop", "Mini Rex", "Mini Satin", "Netherland Dwarf", "New Zealand", "Palomino", "Polish", "Rex",
+            "Rhinelander", "Satin", "Silver", "Silver Fox", "Silver Marten", "Standard Chinchilla", "Mixed"
+        });
+
+        AddBreeds("Horse", new[] {
+            "Akhal-Teke", "American Paint Horse", "American Quarter Horse", "American Saddlebred", "Andalusian",
+            "Appaloosa", "Arabian", "Belgian Draft", "Clydesdale", "Dutch Warmblood", "Friesian", "Hanoverian",
+            "Icelandic Horse", "Lipizzan", "Miniature Horse", "Morgan", "Mustang", "Oldenburg", "Paso Fino",
+            "Percheron", "Pony of the Americas", "Shetland Pony", "Shire", "Standardbred", "Tennessee Walking Horse",
+            "Thoroughbred", "Trakehner", "Welsh Pony", "Grade / Mixed"
+        });
+
+        AddBreeds("Bird", new[] {
+            "African Grey Parrot", "Amazon Parrot", "Budgerigar (Parakeet)", "Caique", "Canary", "Cockatiel",
+            "Cockatoo", "Conure", "Dove", "Eclectus Parrot", "Finch", "Lorie / Lorikeet", "Lovebird", "Macaw",
+            "Parrotlet", "Pigeon", "Pionus Parrot", "Quaker Parrot", "Toucan", "Mixed"
+        });
+
+        return breeds;
+    }
 
     private static readonly string[] PersonalityTraits =
     {

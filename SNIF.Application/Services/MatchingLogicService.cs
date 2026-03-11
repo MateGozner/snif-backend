@@ -14,11 +14,13 @@ namespace SNIF.Busniess.Services
     public class MatchingLogicService : IMatchingLogicService
     {
         private readonly ILogger<MatchingLogicService> _logger;
+        private readonly IEntitlementService _entitlementService;
         private const double DefaultSearchRadius = 50.0;
 
-        public MatchingLogicService(ILogger<MatchingLogicService> logger)
+        public MatchingLogicService(ILogger<MatchingLogicService> logger, IEntitlementService entitlementService)
         {
             _logger = logger;
+            _entitlementService = entitlementService;
         }
 
         public async Task<IEnumerable<(Pet Pet, double Distance)>> FindPotentialMatches(
@@ -34,9 +36,15 @@ namespace SNIF.Busniess.Services
 
             var matches = new List<(Pet Pet, double Distance)>();
             double searchRadius = ownerWithPreferences.Preferences?.SearchRadius ?? DefaultSearchRadius;
+            var ownerEntitlement = await _entitlementService.GetEntitlementAsync(ownerWithPreferences.Id);
+            searchRadius = Math.Min(searchRadius, ownerEntitlement.Limits.SearchRadiusKm);
 
             foreach (var targetPet in potentialMatches)
             {
+                var targetEntitlement = await _entitlementService.GetEntitlementAsync(targetPet.OwnerId);
+                if (_entitlementService.IsPetLocked(targetEntitlement, targetPet.Id))
+                    continue;
+
                 if (!IsPotentialMatch(sourcePet, targetPet, ownerWithPreferences, purposeFilter))
                     continue;
 

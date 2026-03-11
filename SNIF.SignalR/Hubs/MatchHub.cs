@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 namespace SNIF.SignalR.Hubs
 {
+    [Authorize]
     public class MatchHub : Hub
     {
         private readonly ILogger<MatchHub> _logger;
@@ -30,6 +32,12 @@ namespace SNIF.SignalR.Hubs
         {
             try
             {
+                var authenticatedUserId = Context.User?.Identity?.Name;
+                if (string.IsNullOrEmpty(authenticatedUserId) || authenticatedUserId != userId)
+                {
+                    _logger.LogWarning("User {AuthUser} attempted to join group {GroupId}", authenticatedUserId, userId);
+                    throw new HubException("You can only join your own user group.");
+                }
 
                 _logger.LogInformation($"Adding client {Context.ConnectionId} to group {userId}");
                 await Groups.AddToGroupAsync(Context.ConnectionId, userId);

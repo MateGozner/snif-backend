@@ -1,6 +1,8 @@
 ﻿// SNIF.API/Controllers/MatchController.cs
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using SNIF.API.Attributes;
 using SNIF.API.Extensions;
 using SNIF.Core.DTOs;
 using SNIF.Core.Enums;
@@ -12,13 +14,46 @@ namespace SNIF.API.Controllers
     [Authorize]
     [ApiController]
     [Route("api/matches")]
+    [EnableRateLimiting("swipe")]
     public class MatchController : ControllerBase
     {
         private readonly IMatchService _matchService;
+        private readonly IEntitlementService _entitlementService;
+        private readonly IPetService _petService;
 
-        public MatchController(IMatchService matchService)
+        public MatchController(IMatchService matchService, IEntitlementService entitlementService, IPetService petService)
         {
             _matchService = matchService;
+            _entitlementService = entitlementService;
+            _petService = petService;
+        }
+
+        private async Task<ActionResult<MatchDto>> CreateMatchInternal(CreateMatchDto createMatchDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ErrorResponse { Message = "Invalid match data" });
+
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
+            try
+            {
+                var match = await _matchService.CreateMatchAsync(userId, createMatchDto);
+                return CreatedAtAction(nameof(GetMatch), new { id = match.Id }, match);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new ErrorResponse { Message = "Pet not found" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = ex.Message });
+            }
         }
 
         // GET api/matches?petId={petId}&status={status}
@@ -31,8 +66,16 @@ namespace SNIF.API.Controllers
             if (string.IsNullOrEmpty(petId))
                 return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
 
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(authUserId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
             try
             {
+                var pet = await _petService.GetPetByIdAsync(petId);
+                if (pet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only view matches for your own pets" });
+
                 var matches = status switch
                 {
                     MatchStatus.Pending => await _matchService.GetPendingMatchesForPetAsync(petId),
@@ -57,8 +100,16 @@ namespace SNIF.API.Controllers
             if (string.IsNullOrEmpty(petId))
                 return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
 
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(authUserId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
             try
             {
+                var pet = await _petService.GetPetByIdAsync(petId);
+                if (pet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only view matches for your own pets" });
+
                 var matches = await _matchService.GetPendingMatchesForPetAsync(petId);
                 return Ok(matches);
             }
@@ -78,14 +129,26 @@ namespace SNIF.API.Controllers
             if (string.IsNullOrEmpty(petId))
                 return BadRequest(new ErrorResponse { Message = "Pet ID is required" });
 
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
             try
             {
-                var matches = await _matchService.GetPotentialMatchesAsync(petId, purpose);
+                var matches = await _matchService.GetPotentialMatchesAsync(userId, petId, purpose);
                 return Ok(matches);
             }
             catch (KeyNotFoundException)
             {
                 return NotFound(new ErrorResponse { Message = "Pet not found" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = ex.Message });
             }
         }
 
@@ -95,9 +158,16 @@ namespace SNIF.API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<MatchDto>> GetMatch(string id)
         {
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(authUserId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
             try
             {
                 var match = await _matchService.GetMatchByIdAsync(id);
+                if (match.InitiatorPet.OwnerId != authUserId && match.TargetPet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only view your own matches" });
+
                 return Ok(match);
             }
             catch (KeyNotFoundException)
@@ -110,26 +180,27 @@ namespace SNIF.API.Controllers
 
         // POST api/matches
         [HttpPost]
+        [EnforceUsageLimit(UsageType.Like)]
         [ProducesResponseType(typeof(MatchDto), StatusCodes.Status201Created)]
         public async Task<ActionResult<MatchDto>> CreateMatch([FromBody] CreateMatchDto createMatchDto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(new ErrorResponse { Message = "Invalid match data" });
+            return await CreateMatchInternal(createMatchDto);
+        }
 
-            try
-            {
-                var match = await _matchService.CreateMatchAsync(createMatchDto);
-                return CreatedAtAction(nameof(GetMatch), new { id = match.Id }, match);
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFound(new ErrorResponse { Message = "Pet not found" });
-            }
+        // POST api/matches/super-sniff
+        [HttpPost("super-sniff")]
+        [EnforceUsageLimit(UsageType.SuperSniff)]
+        [ProducesResponseType(typeof(MatchDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<MatchDto>> CreateSuperSniff([FromBody] CreateMatchDto createMatchDto)
+        {
+            return await CreateMatchInternal(createMatchDto);
         }
 
         // PATCH api/matches/{id}
         [HttpPatch("{id}")]
         [ProducesResponseType(typeof(MatchDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<MatchDto>> UpdateMatchStatus(
             string id,
             [FromBody] UpdateMatchStatusDto updateDto)
@@ -137,8 +208,13 @@ namespace SNIF.API.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(new ErrorResponse { Message = "Invalid status data" });
 
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             try
             {
+                var existingMatch = await _matchService.GetMatchByIdAsync(id);
+                if (existingMatch.InitiatorPet.OwnerId != authUserId && existingMatch.TargetPet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only update matches involving your own pets" });
+
                 var match = await _matchService.UpdateMatchStatusAsync(id, updateDto.Status);
                 return Ok(match);
             }
@@ -157,7 +233,19 @@ namespace SNIF.API.Controllers
             if (string.IsNullOrEmpty(petIds))
                 return BadRequest(new ErrorResponse { Message = "Pet IDs are required" });
 
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(authUserId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
             var ids = petIds.Split(',').Where(id => !string.IsNullOrEmpty(id)).ToList();
+
+            // Verify all requested pets belong to the authenticated user
+            foreach (var petId in ids)
+            {
+                var pet = await _petService.GetPetByIdAsync(petId);
+                if (pet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only view matches for your own pets" });
+            }
 
             try
             {
@@ -171,13 +259,33 @@ namespace SNIF.API.Controllers
         }
 
 
+        [HttpGet("who-liked-me")]
+        [ProducesResponseType(typeof(List<WhoLikedYouDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetWhoLikedMe()
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var entitlement = await _entitlementService.GetEntitlementAsync(userId);
+
+            var result = await _matchService.GetWhoLikedYouAsync(userId, entitlement.EffectivePlan);
+            return Ok(result);
+        }
+
         // DELETE api/matches/{id}
         [HttpDelete("{id}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> DeleteMatch(string id)
         {
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             try
             {
+                var match = await _matchService.GetMatchByIdAsync(id);
+                if (match.InitiatorPet.OwnerId != authUserId && match.TargetPet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "You can only delete matches involving your own pets" });
+
                 await _matchService.DeleteMatchAsync(id);
                 return NoContent();
             }

@@ -10,6 +10,7 @@ using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
 using SNIF.Core.Models;
 using SNIF.Core.Specifications;
+using SNIF.Core.Utilities;
 using SNIF.Infrastructure.Repository;
 
 namespace SNIF.Application.Services
@@ -25,6 +26,8 @@ namespace SNIF.Application.Services
         private readonly IRepository<User> _userManager;
         private readonly IMessagePublisher _messagePublisher;
         private readonly IMatchingLogicService _matchingLogic;
+        private readonly IMediaStorageService _mediaStorage;
+        private readonly IEntitlementService _entitlementService;
 
         public PetService(
             IRepository<Pet> petRepository,
@@ -35,7 +38,9 @@ namespace SNIF.Application.Services
             IMessagePublisher messagePublisher,
             IMatchingLogicService matchingLogic,
             IRepository<PetMedia> mediaRepository,
-            IRepository<DiscoveryPreferences> discoveryPrefsRepository)
+            IRepository<DiscoveryPreferences> discoveryPrefsRepository,
+            IMediaStorageService mediaStorage,
+            IEntitlementService entitlementService)
         {
             _petRepository = petRepository;
             _matchRepository = matchRepository;
@@ -46,26 +51,38 @@ namespace SNIF.Application.Services
             _matchingLogic = matchingLogic;
             _mediaRepository = mediaRepository;
             _discoveryPrefsRepository = discoveryPrefsRepository;
+            _mediaStorage = mediaStorage;
+            _entitlementService = entitlementService;
         }
 
         public async Task<IEnumerable<PetDto>> GetUserPetsAsync(string userId)
         {
             var spec = new PetWithDetailsSpecification(p => p.OwnerId == userId);
             var pets = await _petRepository.FindBySpecificationAsync(spec);
-            return _mapper.Map<IEnumerable<PetDto>>(pets);
+            var entitlement = await _entitlementService.GetEntitlementAsync(userId);
+            return ApplyEntitlement(_mapper.Map<IEnumerable<PetDto>>(pets), entitlement);
         }
 
         public async Task<PetDto> GetPetByIdAsync(string id)
         {
             var spec = new PetWithDetailsSpecification(id);
             var pet = await _petRepository.GetBySpecificationAsync(spec);
-            return _mapper.Map<PetDto>(pet) ?? throw new KeyNotFoundException($"Pet with ID {id} not found");
+            if (pet == null)
+                throw new KeyNotFoundException($"Pet with ID {id} not found");
+
+            var entitlement = await _entitlementService.GetEntitlementAsync(pet.OwnerId);
+            return ApplyEntitlement(_mapper.Map<PetDto>(pet), entitlement)
+                ?? throw new KeyNotFoundException($"Pet with ID {id} not found");
         }
 
         public async Task<PetDto> CreatePetAsync(string userId, CreatePetDto createPetDto)
         {
             var user = await _userManager.GetByIdAsync(userId)
                 ?? throw new KeyNotFoundException($"User with ID {userId} not found");
+            var entitlement = await _entitlementService.GetEntitlementAsync(userId);
+
+            if (entitlement.IsOverPetLimit || entitlement.TotalPets >= entitlement.Limits.MaxPets)
+                throw new InvalidOperationException("Pet limit reached for the current plan. Upgrade to add more pets.");
 
             var pet = _mapper.Map<Pet>(createPetDto);
             pet.OwnerId = userId;
@@ -78,23 +95,21 @@ namespace SNIF.Application.Services
             {
                 foreach (var mediaDto in createPetDto.Media)
                 {
+                    EnsureMediaSupportedForBeta(mediaDto.Type);
+
                     var mediaId = Guid.NewGuid().ToString();
                     var extension = Path.GetExtension(mediaDto.FileName);
                     var fileName = $"{mediaId}{extension}";
 
                     var fileBytes = Convert.FromBase64String(mediaDto.Base64Data);
-                    var subFolder = mediaDto.Type == MediaType.Photo ? "photos" : "videos";
-                    var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder);
-                    Directory.CreateDirectory(uploadPath);
-                    var filePath = Path.Combine(uploadPath, fileName);
-
-                    await File.WriteAllBytesAsync(filePath, fileBytes);
+                    using var stream = new MemoryStream(fileBytes);
+                    var storedUrl = await _mediaStorage.UploadAsync(stream, fileName, mediaDto.ContentType);
 
                     var media = new PetMedia
                     {
                         Id = mediaId,
                         PetId = pet.Id,
-                        FileName = fileName,
+                        FileName = storedUrl,
                         ContentType = mediaDto.ContentType,
                         Size = fileBytes.Length,
                         Type = mediaDto.Type,
@@ -110,18 +125,17 @@ namespace SNIF.Application.Services
             await NotifyPotentialMatches(pet);
 
             var updatedPet = await _petRepository.GetBySpecificationAsync(new PetWithDetailsSpecification(pet.Id));
-            return _mapper.Map<PetDto>(updatedPet);
+            var refreshedEntitlement = await _entitlementService.GetEntitlementAsync(userId);
+            return ApplyEntitlement(_mapper.Map<PetDto>(updatedPet), refreshedEntitlement)!;
         }
 
 
         public async Task<MediaResponseDto> AddPetMediaAsync(string petId, AddMediaDto mediaDto, string baseUrl)
         {
+            EnsureMediaSupportedForBeta(mediaDto.Type);
+
             var pet = await _petRepository.GetByIdAsync(petId)
                 ?? throw new KeyNotFoundException($"Pet with ID {petId} not found");
-
-            var mediaId = Guid.NewGuid().ToString();
-            var extension = Path.GetExtension(mediaDto.FileName);
-            var fileName = $"{mediaId}{extension}";
 
             // Convert base64 to bytes
             byte[] fileBytes;
@@ -134,18 +148,18 @@ namespace SNIF.Application.Services
                 throw new ArgumentException("Invalid base64 string");
             }
 
-            var subFolder = mediaDto.Type == MediaType.Photo ? "photos" : "videos";
-            var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder);
-            Directory.CreateDirectory(uploadPath);
-            var filePath = Path.Combine(uploadPath, fileName);
+            var mediaId = Guid.NewGuid().ToString();
+            var extension = Path.GetExtension(mediaDto.FileName);
+            var fileName = $"{mediaId}{extension}";
 
-            await File.WriteAllBytesAsync(filePath, fileBytes);
+            using var stream = new MemoryStream(fileBytes);
+            var storedUrl = await _mediaStorage.UploadAsync(stream, fileName, mediaDto.ContentType);
 
             var media = new PetMedia
             {
                 Id = mediaId,
                 PetId = petId,
-                FileName = fileName,
+                FileName = storedUrl,
                 ContentType = mediaDto.ContentType,
                 Size = fileBytes.Length,
                 Type = mediaDto.Type,
@@ -203,11 +217,7 @@ namespace SNIF.Application.Services
             var media = await _mediaRepository.GetByIdAsync(mediaId)
                 ?? throw new KeyNotFoundException($"Media with ID {mediaId} not found");
 
-            var subFolder = media.Type == MediaType.Photo ? "photos" : "videos";
-            var filePath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder, media.FileName);
-
-            if (File.Exists(filePath))
-                File.Delete(filePath);
+            await _mediaStorage.DeleteAsync(media.FileName);
 
             await _mediaRepository.DeleteAsync(media);
             pet.UpdatedAt = DateTime.UtcNow;
@@ -219,7 +229,7 @@ namespace SNIF.Application.Services
             return new MediaResponseDto
             {
                 Id = media.Id,
-                Url = $"{baseUrl}/uploads/pets/{(media.Type == MediaType.Photo ? "photos" : "videos")}/{media.FileName}",
+                Url = MediaPathResolver.ResolvePetMediaPath(media.FileName, media.Type) ?? string.Empty,
                 Type = media.Type,
                 FileName = media.FileName,
                 ContentType = media.ContentType,
@@ -234,19 +244,17 @@ namespace SNIF.Application.Services
             };
         }
 
+        private static void EnsureMediaSupportedForBeta(MediaType mediaType)
+        {
+            if (mediaType == MediaType.Video)
+                throw new ArgumentException("Pet video uploads are disabled for the closed beta. Upload photos instead.");
+        }
+
         private async Task<string> SaveFileAsync(IFormFile file, string folder)
         {
             var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-            var uploadPath = Path.Combine(_environment.WebRootPath, "uploads", folder);
-            Directory.CreateDirectory(uploadPath);
-            var filePath = Path.Combine(uploadPath, fileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            return fileName;
+            using var stream = file.OpenReadStream();
+            return await _mediaStorage.UploadAsync(stream, fileName, file.ContentType);
         }
 
         public async Task<string> AddPetPhotoAsync(string id, IFormFile photo)
@@ -283,9 +291,7 @@ namespace SNIF.Application.Services
             if (!pet.Photos.Remove(photoName))
                 throw new KeyNotFoundException($"Photo {photoName} not found");
 
-            var filePath = Path.Combine(_environment.WebRootPath, "uploads", "pets/photos", photoName);
-            if (File.Exists(filePath))
-                File.Delete(filePath);
+            await _mediaStorage.DeleteAsync(photoName);
 
             pet.UpdatedAt = DateTime.UtcNow;
             await _petRepository.UpdateAsync(pet);
@@ -299,9 +305,7 @@ namespace SNIF.Application.Services
             if (!pet.Videos.Remove(videoName))
                 throw new KeyNotFoundException($"Video {videoName} not found");
 
-            var filePath = Path.Combine(_environment.WebRootPath, "uploads", "pets/videos", videoName);
-            if (File.Exists(filePath))
-                File.Delete(filePath);
+            await _mediaStorage.DeleteAsync(videoName);
 
             pet.UpdatedAt = DateTime.UtcNow;
             await _petRepository.UpdateAsync(pet);
@@ -315,11 +319,7 @@ namespace SNIF.Application.Services
             // Delete all media files
             foreach (var media in pet.Media)
             {
-                var subFolder = media.Type == MediaType.Photo ? "photos" : "videos";
-                var filePath = Path.Combine(_environment.WebRootPath, "uploads", "pets", subFolder, media.FileName);
-
-                if (File.Exists(filePath))
-                    File.Delete(filePath);
+                await _mediaStorage.DeleteAsync(media.FileName);
             }
 
             // Delete matches
@@ -343,7 +343,26 @@ namespace SNIF.Application.Services
             pet.UpdatedAt = DateTime.UtcNow;
 
             await _petRepository.UpdateAsync(pet);
-            return _mapper.Map<PetDto>(pet);
+            var entitlement = await _entitlementService.GetEntitlementAsync(pet.OwnerId);
+            return ApplyEntitlement(_mapper.Map<PetDto>(pet), entitlement)!;
+        }
+
+        private IEnumerable<PetDto> ApplyEntitlement(IEnumerable<PetDto> pets, EntitlementSnapshotDto entitlement)
+        {
+            return pets.Select(pet => ApplyEntitlement(pet, entitlement)!).ToArray();
+        }
+
+        private PetDto? ApplyEntitlement(PetDto? pet, EntitlementSnapshotDto entitlement)
+        {
+            if (pet == null)
+                return null;
+
+            var petState = entitlement.PetStates.FirstOrDefault(state => state.PetId == pet.Id);
+            return pet with
+            {
+                IsLocked = petState?.IsLocked ?? false,
+                EntitlementLockReason = petState?.LockReason
+            };
         }
 
         private async Task NotifyPotentialMatches(Pet newPet)

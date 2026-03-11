@@ -1,12 +1,12 @@
 using AutoMapper;
 using SNIF.Core.DTOs;
 using SNIF.Core.Entities;
+using SNIF.Core.Utilities;
 
 namespace SNIF.Core.Mappings
 {
     public class PetMappingProfile : Profile
     {
-        private const string BaseUrl = "http://localhost:5001";
         public PetMappingProfile()
         {
             CreateMap<Pet, PetDto>()
@@ -28,9 +28,7 @@ namespace SNIF.Core.Mappings
 
             CreateMap<PetMedia, MediaResponseDto>()
                 .ForMember(dest => dest.Url, opt => opt.MapFrom((src, _, _, context) =>
-                src.FileName.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                    ? src.FileName
-                    : $"{BaseUrl}/uploads/pets/{(src.Type == MediaType.Photo ? "photos" : "videos")}/{src.FileName}"))
+                    MediaPathResolver.ResolvePetMediaPath(src.FileName, src.Type)!))
                 .ForMember(dest => dest.Links, opt => opt.MapFrom((src, _, _, context) =>
                     new Dictionary<string, string>
                     {

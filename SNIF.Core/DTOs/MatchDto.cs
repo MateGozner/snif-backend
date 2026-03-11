@@ -33,4 +33,14 @@ namespace SNIF.Core.DTOs
     {
         public MatchStatus Status { get; init; }
     }
+
+    public record WhoLikedYouDto
+    {
+        public string MatchId { get; init; } = null!;
+        public string PetName { get; init; } = null!;
+        public string? PetPhotoUrl { get; init; }
+        public string? Breed { get; init; }
+        public DateTime LikedAt { get; init; }
+        public bool IsBlurred { get; init; }
+    }
 }

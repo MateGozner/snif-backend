@@ -11,7 +11,11 @@ namespace SNIF.Core.Interfaces
     {
         Task<MessageDto> SendMessageAsync(CreateMessageDto messageDto, string senderId);
         Task<IEnumerable<MessageDto>> GetMatchMessagesAsync(string matchId);
+        Task<MessageDto?> GetMessageByIdAsync(string messageId);
         Task<MessageDto> MarkAsReadAsync(string messageId);
         Task<IEnumerable<ChatSummaryDto>> GetUserChatsAsync(string userId);
+        Task<MessageReactionDto> AddReactionAsync(string messageId, string userId, string emoji);
+        Task<bool> RemoveReactionAsync(string messageId, string userId, string emoji);
+        Task<MessageDto> SendImageMessageAsync(string matchId, string senderId, string receiverId, string attachmentUrl, string fileName, long sizeBytes);
     }
 }

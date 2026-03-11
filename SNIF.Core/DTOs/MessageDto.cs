@@ -15,6 +15,11 @@ namespace SNIF.Core.DTOs
         public string MatchId { get; init; } = null!;
         public bool IsRead { get; init; }
         public DateTime CreatedAt { get; init; }
+        public string? AttachmentUrl { get; init; }
+        public string? AttachmentType { get; init; }
+        public string? AttachmentFileName { get; init; }
+        public long? AttachmentSizeBytes { get; init; }
+        public List<MessageReactionDto> Reactions { get; init; } = new();
     }
 
     public record CreateMessageDto
@@ -29,8 +34,23 @@ namespace SNIF.Core.DTOs
         public string MatchId { get; init; } = null!;
         public string PartnerId { get; init; } = null!;
         public string PartnerName { get; init; } = null!;
+        public string? PartnerProfilePicture { get; init; }
+        public string? PartnerPetName { get; init; }
+        public string? PartnerPetId { get; init; }
         public MessageDto? LastMessage { get; init; }
         public int UnreadCount { get; init; }
     }
 
+    public record AddReactionDto
+    {
+        public required string Emoji { get; init; }
+    }
+
+    public record MessageReactionDto
+    {
+        public string Id { get; init; } = null!;
+        public string UserId { get; init; } = null!;
+        public string Emoji { get; init; } = null!;
+        public DateTime CreatedAt { get; init; }
+    }
 }

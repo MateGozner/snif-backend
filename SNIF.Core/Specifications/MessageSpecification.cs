@@ -27,6 +27,7 @@ namespace SNIF.Core.Specifications
             AddInclude(m => m.Sender);
             AddInclude(m => m.Receiver);
             AddInclude(m => m.Match);
+            AddInclude(m => m.Reactions);
         }
     }
 
@@ -38,6 +39,8 @@ namespace SNIF.Core.Specifications
             AddInclude(m => m.Sender);
             AddInclude(m => m.Receiver);
             AddInclude(m => m.Match);
+            AddInclude("Match.InitiatiorPet");
+            AddInclude("Match.TargetPet");
         }
     }
 }

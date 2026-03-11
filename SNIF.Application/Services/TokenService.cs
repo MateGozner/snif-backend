@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using SNIF.Core.Configuration;
 using SNIF.Core.Entities;
 using SNIF.Core.Interfaces;
 
@@ -16,15 +17,7 @@ namespace SNIF.Infrastructure.Services
         public TokenService(IConfiguration config)
         {
             _config = config;
-            // Make sure your JWT:Key in appsettings.json is at least 64 characters long
-            var keyBytes = Encoding.UTF8.GetBytes(_config["Jwt:Key"] ??
-                throw new InvalidOperationException("JWT Key not configured"));
-
-            // Ensure key is long enough for HMAC-SHA512
-            if (keyBytes.Length < 64) // 512 bits = 64 bytes
-            {
-                throw new InvalidOperationException("JWT Key must be at least 64 characters long");
-            }
+            var keyBytes = JwtKeyValidator.GetValidatedKeyBytes(_config["Jwt:Key"]);
 
             _key = new SymmetricSecurityKey(keyBytes);
         }
