@@ -24,6 +24,30 @@ namespace SNIF.API.Controllers
             _environment = environment ?? throw new ArgumentNullException(nameof(environment));
         }
 
+        private void SetAuthCookie(string token)
+        {
+            Response.Cookies.Append("__Host-snif-jwt", token, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+                Path = "/",
+                MaxAge = TimeSpan.FromHours(1),
+                IsEssential = true
+            });
+        }
+
+        private void ClearAuthCookie()
+        {
+            Response.Cookies.Delete("__Host-snif-jwt", new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
+                Path = "/"
+            });
+        }
+
         // POST api/users
         [HttpPost]
         [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status201Created)]
@@ -36,6 +60,8 @@ namespace SNIF.API.Controllers
             try
             {
                 var user = await _userService.RegisterUserAsync(createUserDto);
+                if (!string.IsNullOrEmpty(user.Token))
+                    SetAuthCookie(user.Token);
                 return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
             }
             catch (UnauthorizedAccessException e)
@@ -61,6 +87,8 @@ namespace SNIF.API.Controllers
             try
             {
                 var authResponse = await _userService.LoginUserAsync(loginDto);
+                if (!string.IsNullOrEmpty(authResponse.Token))
+                    SetAuthCookie(authResponse.Token);
                 Response.Headers.Append("Cache-Control", "no-store");
                 return Ok(authResponse);
             }
@@ -82,6 +110,7 @@ namespace SNIF.API.Controllers
         public async Task<ActionResult> DeleteToken()
         {
             await _userService.LogoutUser();
+            ClearAuthCookie();
             Response.Headers.Append("Cache-Control", "no-store");
             return NoContent();
         }
@@ -227,6 +256,8 @@ namespace SNIF.API.Controllers
             try
             {
                 var response = await _userService.ValidateAndRefreshTokenAsync(tokenDto.Token);
+                if (!string.IsNullOrEmpty(response.Token))
+                    SetAuthCookie(response.Token);
                 Response.Headers.Append("Cache-Control", "no-store");
                 return Ok(response);
             }
@@ -248,6 +279,8 @@ namespace SNIF.API.Controllers
             try
             {
                 var authResponse = await _userService.GoogleAuthAsync(dto);
+                if (!string.IsNullOrEmpty(authResponse.Token))
+                    SetAuthCookie(authResponse.Token);
                 Response.Headers.Append("Cache-Control", "no-store");
                 return Ok(authResponse);
             }

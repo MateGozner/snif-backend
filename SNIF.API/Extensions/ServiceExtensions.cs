@@ -241,6 +241,14 @@ public static class ServiceExtensions
                         {
                             context.Token = accessToken;
                         }
+
+                        // Fallback: read JWT from httpOnly cookie (web clients)
+                        if (string.IsNullOrEmpty(context.Token) &&
+                            context.Request.Cookies.TryGetValue("__Host-snif-jwt", out var cookieToken))
+                        {
+                            context.Token = cookieToken;
+                        }
+
                         return Task.CompletedTask;
                     }
                 };
