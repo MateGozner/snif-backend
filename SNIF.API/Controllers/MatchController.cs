@@ -7,6 +7,7 @@ using SNIF.API.Extensions;
 using SNIF.Core.DTOs;
 using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
+using SNIF.Core.Models;
 using System.Security.Claims;
 
 namespace SNIF.API.Controllers
@@ -288,6 +289,34 @@ namespace SNIF.API.Controllers
 
                 await _matchService.DeleteMatchAsync(id);
                 return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new ErrorResponse { Message = "Match not found" });
+            }
+        }
+
+        // GET api/matches/{matchId}/call-eligibility
+        [HttpGet("{matchId}/call-eligibility")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetCallEligibility(string matchId)
+        {
+            var authUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(authUserId))
+                return Unauthorized(new ErrorResponse { Message = "User not authenticated" });
+
+            try
+            {
+                var match = await _matchService.GetMatchByIdAsync(matchId);
+                if (match.InitiatorPet.OwnerId != authUserId && match.TargetPet.OwnerId != authUserId)
+                    return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse { Message = "Access denied" });
+
+                var peerId = await _matchService.GetPeerUserIdAsync(matchId, authUserId);
+                var peerEntitlement = await _entitlementService.GetEntitlementAsync(peerId);
+                var peerLimits = peerEntitlement.Limits ?? PlanLimits.GetLimits(peerEntitlement.EffectivePlan);
+                var partnerEligible = peerLimits.VideoCallEnabled;
+
+                return Ok(new { eligible = partnerEligible });
             }
             catch (KeyNotFoundException)
             {
