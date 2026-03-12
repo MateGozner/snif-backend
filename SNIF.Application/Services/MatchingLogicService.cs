@@ -2,6 +2,7 @@
 using SNIF.Core.Entities;
 using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
+using SNIF.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,11 +14,13 @@ namespace SNIF.Busniess.Services
     public class MatchingLogicService : IMatchingLogicService
     {
         private readonly ILogger<MatchingLogicService> _logger;
+        private readonly IEntitlementService _entitlementService;
         private const double DefaultSearchRadius = 50.0;
 
-        public MatchingLogicService(ILogger<MatchingLogicService> logger)
+        public MatchingLogicService(ILogger<MatchingLogicService> logger, IEntitlementService entitlementService)
         {
             _logger = logger;
+            _entitlementService = entitlementService;
         }
 
         public async Task<IEnumerable<(Pet Pet, double Distance)>> FindPotentialMatches(
@@ -33,9 +36,15 @@ namespace SNIF.Busniess.Services
 
             var matches = new List<(Pet Pet, double Distance)>();
             double searchRadius = ownerWithPreferences.Preferences?.SearchRadius ?? DefaultSearchRadius;
+            var ownerEntitlement = await _entitlementService.GetEntitlementAsync(ownerWithPreferences.Id);
+            searchRadius = Math.Min(searchRadius, ownerEntitlement.Limits.SearchRadiusKm);
 
             foreach (var targetPet in potentialMatches)
             {
+                var targetEntitlement = await _entitlementService.GetEntitlementAsync(targetPet.OwnerId);
+                if (_entitlementService.IsPetLocked(targetEntitlement, targetPet.Id))
+                    continue;
+
                 if (!IsPotentialMatch(sourcePet, targetPet, ownerWithPreferences, purposeFilter))
                     continue;
 
@@ -67,9 +76,36 @@ namespace SNIF.Busniess.Services
             if (targetPet.Id == sourcePet.Id)
                 return false;
 
-            // Species match
+            var prefs = sourcePet.DiscoveryPreferences;
+
+            // Species match - check AllowOtherSpecies preference
             if (sourcePet.Species != targetPet.Species)
+            {
+                if (prefs == null || !prefs.AllowOtherSpecies)
+                    return false;
+            }
+
+            // Breed filter - check AllowOtherBreeds preference
+            if (prefs != null && !prefs.AllowOtherBreeds)
+            {
+                if (sourcePet.Breed != targetPet.Breed)
+                    return false;
+            }
+
+            // Age range filter
+            if (prefs?.MinAge != null && targetPet.Age < prefs.MinAge)
                 return false;
+            if (prefs?.MaxAge != null && targetPet.Age > prefs.MaxAge)
+                return false;
+
+            // Gender preference filter
+            if (prefs?.PreferredGender != null)
+            {
+                if (!Enum.TryParse<Gender>(prefs.PreferredGender, true, out var preferredGender))
+                    return false;
+                if (targetPet.Gender != preferredGender)
+                    return false;
+            }
 
             // Purpose compatibility
             if (purposeFilter.HasValue)
@@ -84,14 +120,45 @@ namespace SNIF.Busniess.Services
             }
             else
             {
-                // Check if pets share any purpose
-                var sharedPurposes = sourcePet.Purpose.Intersect(targetPet.Purpose);
-                if (!sharedPurposes.Any())
-                    return false;
+                // Preferred purposes filter
+                if (prefs?.PreferredPurposes != null)
+                {
+                    var preferred = prefs.PreferredPurposes
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => Enum.TryParse<PetPurpose>(p.Trim(), true, out var pp) ? pp : (PetPurpose?)null)
+                        .Where(p => p.HasValue)
+                        .Select(p => p!.Value)
+                        .ToList();
 
-                // Breeding check for any shared breeding purpose
-                if (sharedPurposes.Contains(PetPurpose.Breeding) && sourcePet.Gender == targetPet.Gender)
-                    return false;
+                    if (preferred.Count > 0)
+                    {
+                        var sharedPurposes = preferred.Intersect(targetPet.Purpose);
+                        if (!sharedPurposes.Any())
+                            return false;
+
+                        if (sharedPurposes.Contains(PetPurpose.Breeding) && sourcePet.Gender == targetPet.Gender)
+                            return false;
+                    }
+                    else
+                    {
+                        var sharedPurposes = sourcePet.Purpose.Intersect(targetPet.Purpose);
+                        if (!sharedPurposes.Any())
+                            return false;
+                        if (sharedPurposes.Contains(PetPurpose.Breeding) && sourcePet.Gender == targetPet.Gender)
+                            return false;
+                    }
+                }
+                else
+                {
+                    // Check if pets share any purpose
+                    var sharedPurposes = sourcePet.Purpose.Intersect(targetPet.Purpose);
+                    if (!sharedPurposes.Any())
+                        return false;
+
+                    // Breeding check for any shared breeding purpose
+                    if (sharedPurposes.Contains(PetPurpose.Breeding) && sourcePet.Gender == targetPet.Gender)
+                        return false;
+                }
             }
 
             return true;

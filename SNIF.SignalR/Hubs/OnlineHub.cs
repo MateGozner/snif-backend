@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using SNIF.Core.Interfaces;
 using System;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 
 namespace SNIF.SignalR.Hubs
 {
+    [Authorize]
     public class OnlineHub : Hub
     {
         private readonly IUserService _userService;

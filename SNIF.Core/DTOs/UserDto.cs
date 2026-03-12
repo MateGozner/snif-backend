@@ -18,6 +18,9 @@ namespace SNIF.Core.DTOs
         public string? ProfilePicturePath { get; init; }
         public bool IsOnline { get; init; }
         public DateTime? LastSeen { get; init; }
+        public bool HasGoogleLinked { get; init; }
+        public bool HasPassword { get; init; }
+        public bool EmailConfirmed { get; init; }
     }
 
     public record CreateUserDto

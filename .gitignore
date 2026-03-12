@@ -3,8 +3,13 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
-# dotenv files
+# Secrets & sensitive credentials
+firebase-admin-sdk.json
+*.p12
+*.pem
 .env
+.env.local
+.env.production
 
 # User-specific files
 *.rsuser

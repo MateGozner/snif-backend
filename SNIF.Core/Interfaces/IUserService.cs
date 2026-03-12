@@ -20,5 +20,23 @@ namespace SNIF.Core.Interfaces
         Task UpdateUserOnlineStatus(string userId, bool isOnline);
         Task<AuthResponseDto> ValidateAndRefreshTokenAsync(string token);
         Task<string> GetUserProfilePictureName(string id);
+
+        // Google OAuth
+        Task<AuthResponseDto> GoogleAuthAsync(GoogleAuthRequestDto request);
+        Task LinkGoogleAccountAsync(string userId, LinkGoogleAccountDto request);
+        Task UnlinkGoogleAccountAsync(string userId);
+        Task SetPasswordAsync(string userId, SetPasswordDto request);
+
+        // Password Reset
+        Task ForgotPasswordAsync(ForgotPasswordDto dto);
+        Task ResetPasswordAsync(ResetPasswordDto dto);
+
+        // Email Confirmation
+        Task ConfirmEmailAsync(ConfirmEmailDto dto);
+        Task ResendConfirmationAsync(ResendConfirmationDto dto);
+
+        // GDPR
+        Task<UserDataExportDto> ExportUserDataAsync(string userId);
+        Task DeleteAccountAsync(string userId);
     }
 }

@@ -1,34 +1,21 @@
-# Dockerfile
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-WORKDIR /app
-EXPOSE 80
-EXPOSE 443
-EXPOSE 5000
-
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY ["SNIF.API/SNIF.API.csproj", "SNIF.API/"]
-COPY ["SNIF.Core/SNIF.Core.csproj", "SNIF.Core/"]
-COPY ["SNIF.Infrastructure/SNIF.Infrastructure.csproj", "SNIF.Infrastructure/"]
-COPY ["SNIF.Application/SNIF.Application.csproj", "SNIF.Application/"]
-
-
-RUN dotnet restore "SNIF.API/SNIF.API.csproj"
-RUN dotnet restore "SNIF.Infrastructure/SNIF.Infrastructure.csproj"
-
+COPY SNIF.sln .
+COPY SNIF.API/SNIF.API.csproj SNIF.API/
+COPY SNIF.Core/SNIF.Core.csproj SNIF.Core/
+COPY SNIF.Application/SNIF.Application.csproj SNIF.Application/
+COPY SNIF.Infrastructure/SNIF.Infrastructure.csproj SNIF.Infrastructure/
+COPY SNIF.SignalR/SNIF.SignalR.csproj SNIF.SignalR/
+COPY SNIF.Messaging/SNIF.Messaging.csproj SNIF.Messaging/
+RUN dotnet restore SNIF.sln
 
 COPY . .
+RUN dotnet publish SNIF.API/SNIF.API.csproj -c Release -o /app/publish --no-restore
 
-WORKDIR "/src/SNIF.Infrastructure"
-RUN dotnet build "SNIF.Infrastructure.csproj" -c Release -o /app/build
-
-WORKDIR "/src/SNIF.API"
-RUN dotnet build "SNIF.API.csproj" -c Release -o /app/build
-
-FROM build AS publish
-RUN dotnet publish "SNIF.API.csproj" -c Release -o /app/publish
-
-FROM base AS final
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-COPY --from=publish /app/publish .
+EXPOSE 8080
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "SNIF.API.dll"]

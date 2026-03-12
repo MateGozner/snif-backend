@@ -21,6 +21,8 @@ namespace SNIF.Core.DTOs
         public string OwnerId { get; init; } = null!;
         public DateTime CreatedAt { get; init; }
         public DateTime? UpdatedAt { get; init; }
+        public bool IsLocked { get; init; }
+        public string? EntitlementLockReason { get; init; }
         public IDictionary<string, string> Links { get; init; } = new Dictionary<string, string>();
     }
 
