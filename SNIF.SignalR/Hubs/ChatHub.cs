@@ -91,6 +91,13 @@ namespace SNIF.SignalR.Hubs
         {
             var userId = Context.UserIdentifier!;
             _ = receiverId;
+
+            if (string.IsNullOrWhiteSpace(emoji) || emoji.Length > 8)
+            {
+                throw new HubException("Invalid reaction.");
+            }
+            emoji = WebUtility.HtmlEncode(emoji);
+
             try
             {
                 var resolvedReceiverId = await ResolveMessagePeerUserIdAsync(messageId, userId);
@@ -146,6 +153,14 @@ namespace SNIF.SignalR.Hubs
             var senderId = Context.UserIdentifier!;
             _ = receiverId;
             var resolvedReceiverId = await ResolvePeerUserIdAsync(matchId, senderId);
+
+            if (!Uri.TryCreate(attachmentUrl, UriKind.Absolute, out var uri) ||
+                !uri.Host.EndsWith(".blob.core.windows.net", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HubException("Invalid attachment URL.");
+            }
+            fileName = WebUtility.HtmlEncode(fileName);
+
             var message = await _chatService.SendImageMessageAsync(
                 matchId, senderId, resolvedReceiverId, attachmentUrl, fileName, sizeBytes);
 

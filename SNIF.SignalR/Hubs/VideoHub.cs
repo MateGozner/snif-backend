@@ -85,11 +85,10 @@ namespace SNIF.SignalR.Hubs
             var resolvedCallerId = await ResolvePeerUserIdAsync(matchId, receiverId);
             var roomId = $"{RoomPrefix}{matchId}";
 
-            // Record call start time when accepted
-            if (_activeCallRoles.TryGetValue(matchId, out var roles))
-            {
-                _activeCallRoles[matchId] = (roles.CallerId, roles.ReceiverId, DateTime.UtcNow);
-            }
+            // Record call start time when accepted (atomic to prevent race condition)
+            _activeCallRoles.AddOrUpdate(matchId,
+                _ => (receiverId, resolvedCallerId, DateTime.UtcNow),
+                (_, roles) => (roles.CallerId, roles.ReceiverId, DateTime.UtcNow));
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
 

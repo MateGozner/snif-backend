@@ -1,5 +1,7 @@
 using Google.Apis.Auth;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using SNIF.Core.Configuration;
 using SNIF.Core.Interfaces;
 
 namespace SNIF.Infrastructure.Services
@@ -7,38 +9,63 @@ namespace SNIF.Infrastructure.Services
     public class GoogleAuthService : IGoogleAuthService
     {
         private readonly IReadOnlyList<string> _validClientIds;
+        private readonly IReadOnlyList<string> _configuredClientTypes;
+        private readonly ILogger<GoogleAuthService> _logger;
 
-        public GoogleAuthService(IConfiguration config)
+        public GoogleAuthService(IConfiguration config, ILogger<GoogleAuthService> logger)
         {
-            var clientIds = new List<string>();
+            _logger = logger;
 
             var webClientId = config["Google:ClientId"];
-            if (!string.IsNullOrEmpty(webClientId)) clientIds.Add(webClientId);
-
             var iosClientId = config["Google:ClientIdIos"];
-            if (!string.IsNullOrEmpty(iosClientId)) clientIds.Add(iosClientId);
-
             var androidClientId = config["Google:ClientIdAndroid"];
-            if (!string.IsNullOrEmpty(androidClientId)) clientIds.Add(androidClientId);
 
-            _validClientIds = clientIds.AsReadOnly();
+            _validClientIds = GoogleClientIdValidator.GetValidatedClientIds(
+                webClientId,
+                iosClientId,
+                androidClientId,
+                requireAtLeastOneClientId: false);
+
+            _configuredClientTypes = new[]
+            {
+                (Name: "web", Value: webClientId),
+                (Name: "ios", Value: iosClientId),
+                (Name: "android", Value: androidClientId)
+            }
+            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
+            .Select(item => item.Name)
+            .ToArray();
         }
 
         public async Task<GoogleUserInfo> ValidateGoogleTokenAsync(string idToken)
         {
-            var settings = new GoogleJsonWebSignature.ValidationSettings
+            try
             {
-                Audience = _validClientIds
-            };
+                var settings = new GoogleJsonWebSignature.ValidationSettings
+                {
+                    Audience = _validClientIds
+                };
 
-            var payload = await GoogleJsonWebSignature.ValidateAsync(idToken, settings);
+                var payload = await GoogleJsonWebSignature.ValidateAsync(idToken, settings);
 
-            return new GoogleUserInfo(
-                SubjectId: payload.Subject,
-                Email: payload.Email,
-                Name: payload.Name,
-                PictureUrl: payload.Picture
-            );
+                return new GoogleUserInfo(
+                    SubjectId: payload.Subject,
+                    Email: payload.Email,
+                    Name: payload.Name,
+                    PictureUrl: payload.Picture
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Google token validation failed. ConfiguredClientTypes: {ConfiguredClientTypes}. AudienceCount: {AudienceCount}. TokenLength: {TokenLength}.",
+                    _configuredClientTypes,
+                    _validClientIds.Count,
+                    idToken?.Length ?? 0);
+
+                throw;
+            }
         }
     }
 }

@@ -127,7 +127,7 @@ namespace SNIF.API.Controllers
 
         [HttpPost("{id}/media")]
         [Authorize]
-        [RequestSizeLimit(10_000_000)]
+        [RequestSizeLimit(10_485_760)]
         [ProducesResponseType(typeof(MediaResponseDto), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<MediaResponseDto>> AddMedia(
