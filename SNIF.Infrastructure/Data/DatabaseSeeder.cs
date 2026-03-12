@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SNIF.Core.Constants;
 using SNIF.Core.DTOs;
@@ -17,12 +18,14 @@ public static class DatabaseSeeder
         var context = serviceProvider.GetRequiredService<SNIFContext>();
         var userManager = serviceProvider.GetRequiredService<UserManager<User>>();
         var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
         // Seed roles (always idempotent)
         await SeedRolesAsync(roleManager);
 
         // Seed default admin user
-        await SeedAdminUserAsync(userManager);
+        var adminPassword = configuration["Admin:Password"] ?? "Admin1234!";
+        await SeedAdminUserAsync(userManager, adminPassword);
 
         // Seed Animal Breeds
         if (!context.AnimalBreeds.Any())
@@ -71,7 +74,7 @@ public static class DatabaseSeeder
         }
     }
 
-    private static async Task SeedAdminUserAsync(UserManager<User> userManager)
+    private static async Task SeedAdminUserAsync(UserManager<User> userManager, string adminPassword)
     {
         const string adminEmail = "admin@snif.app";
         var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
@@ -87,7 +90,7 @@ public static class DatabaseSeeder
                 CreatedAt = DateTime.UtcNow,
             };
 
-            var result = await userManager.CreateAsync(admin, "Admin1234!");
+            var result = await userManager.CreateAsync(admin, adminPassword);
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(admin, AppRoles.SuperAdmin);

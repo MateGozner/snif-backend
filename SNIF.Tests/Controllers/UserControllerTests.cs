@@ -77,14 +77,23 @@ public class UserControllerTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetUser_NotFound_Returns404OrRateLimited()
+    public async Task GetUser_WithoutAuth_Returns401()
     {
         var client = _factory.CreateClient();
 
         var response = await client.GetAsync("/api/users/nonexistent-user-id");
 
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.NotFound, HttpStatusCode.TooManyRequests);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetUserPicture_WithoutAuth_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/api/users/nonexistent-user-id/picture");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

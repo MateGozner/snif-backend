@@ -98,4 +98,14 @@ public class AuthTests : IClassFixture<CustomWebApplicationFactory>
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    [Fact]
+    public async Task UnauthenticatedBanUser_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/api/admin/users/some-user-id/ban", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
 }

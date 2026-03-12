@@ -9,5 +9,6 @@ namespace SNIF.Core.Interfaces
         Task<SubscriptionActivationStatusDto> RefreshSubscriptionActivationStatus(string userId);
         Task<string> CreatePortalSession(string userId);
         Task HandleWebhookEvent(string json, string signature);
+        Task<string> CreateDayPassCheckoutSession(string userId, CreateDayPassCheckoutDto dto);
     }
 }

@@ -19,5 +19,11 @@ namespace SNIF.Core.Configuration
         public string TreatBag10 { get; set; } = string.Empty;
         public string TreatBag50 { get; set; } = string.Empty;
         public string TreatBag100 { get; set; } = string.Empty;
+        public string DayPassRadius50_1 { get; set; } = string.Empty;
+        public string DayPassRadius50_3 { get; set; } = string.Empty;
+        public string DayPassRadius50_7 { get; set; } = string.Empty;
+        public string DayPassVideoChat_1 { get; set; } = string.Empty;
+        public string DayPassVideoChat_3 { get; set; } = string.Empty;
+        public string DayPassVideoChat_7 { get; set; } = string.Empty;
     }
 }

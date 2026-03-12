@@ -40,10 +40,31 @@ namespace SNIF.Application.Services
             var effectivePlan = ResolveEffectivePlan(subscription, now, billingPlan, effectiveStatus);
             var limits = PlanLimits.GetLimits(effectivePlan);
 
+            // Query active boosts
+            var activeBoosts = await _context.UserBoosts
+                .AsNoTracking()
+                .Where(b => b.UserId == userId && b.ExpiresAt > now)
+                .OrderByDescending(b => b.ActivatedAt)
+                .ToListAsync();
+
+            // Merge boost overrides into limits
+            var mergedLimits = MergeBoostOverrides(limits, activeBoosts);
+
+            var activeBoostDtos = activeBoosts.Select(b => new BoostDto
+            {
+                Id = b.Id,
+                BoostType = b.BoostType,
+                DurationDays = b.DurationDays,
+                ActivatedAt = b.ActivatedAt,
+                ExpiresAt = b.ExpiresAt,
+                Source = b.Source,
+                CreditsCost = b.CreditsCost
+            }).ToArray();
+
             var petStates = pets
                 .Select((pet, index) =>
                 {
-                    var isLocked = index >= limits.MaxPets;
+                    var isLocked = index >= mergedLimits.MaxPets;
                     return new PetEntitlementStateDto
                     {
                         PetId = pet.Id,
@@ -51,7 +72,7 @@ namespace SNIF.Application.Services
                         CreatedAt = pet.CreatedAt,
                         IsLocked = isLocked,
                         LockReason = isLocked
-                            ? $"Locked because this account exceeds the {effectivePlan} plan pet limit of {limits.MaxPets}. Oldest pets stay active after downgrade or expiry."
+                            ? $"Locked because this account exceeds the {effectivePlan} plan pet limit of {mergedLimits.MaxPets}. Oldest pets stay active after downgrade or expiry."
                             : null
                     };
                 })
@@ -72,13 +93,14 @@ namespace SNIF.Application.Services
                 CurrentPeriodEnd = subscription?.CurrentPeriodEnd,
                 CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
                 DowngradeEffectiveAt = ResolveDowngradeEffectiveAt(subscription, now, effectiveStatus),
-                Limits = limits,
+                Limits = mergedLimits,
                 TotalPets = petStates.Length,
-                ActivePets = Math.Min(petStates.Length, limits.MaxPets),
+                ActivePets = Math.Min(petStates.Length, mergedLimits.MaxPets),
                 LockedPets = lockedPetIds.Length,
-                IsOverPetLimit = petStates.Length > limits.MaxPets,
+                IsOverPetLimit = petStates.Length > mergedLimits.MaxPets,
                 LockedPetIds = lockedPetIds,
-                PetStates = petStates
+                PetStates = petStates,
+                ActiveBoosts = activeBoostDtos
             };
         }
 
@@ -159,6 +181,38 @@ namespace SNIF.Application.Services
             return effectiveStatus == EntitlementStatus.Downgraded
                 ? subscription.CurrentPeriodEnd
                 : null;
+        }
+
+        private static PlanLimits MergeBoostOverrides(PlanLimits baseLimits, List<Core.Entities.UserBoost> activeBoosts)
+        {
+            if (activeBoosts.Count == 0)
+                return baseLimits;
+
+            var merged = new PlanLimits
+            {
+                MaxPets = baseLimits.MaxPets,
+                DailyLikes = baseLimits.DailyLikes,
+                DailySuperSniffs = baseLimits.DailySuperSniffs,
+                SearchRadiusKm = baseLimits.SearchRadiusKm,
+                VideoCallEnabled = baseLimits.VideoCallEnabled,
+                HasAds = baseLimits.HasAds,
+                UnlimitedLikes = baseLimits.UnlimitedLikes
+            };
+
+            foreach (var boost in activeBoosts)
+            {
+                switch (boost.BoostType)
+                {
+                    case Core.Enums.BoostType.Radius50:
+                        merged.SearchRadiusKm = Math.Max(merged.SearchRadiusKm, 50);
+                        break;
+                    case Core.Enums.BoostType.VideoChat:
+                        merged.VideoCallEnabled = true;
+                        break;
+                }
+            }
+
+            return merged;
         }
     }
 }

@@ -50,14 +50,14 @@ public class PetControllerTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetPets_WithoutUserId_Returns200()
+    public async Task GetPets_WithoutAuth_Returns401()
     {
         var client = _factory.CreateClient();
 
-        // GET /api/pets without userId param - endpoint doesn't require auth
+        // GET /api/pets without auth - endpoint now requires auth
         var response = await client.GetAsync("/api/pets?userId=test");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -77,14 +77,14 @@ public class PetControllerTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetPetById_NotFound_Returns404()
+    public async Task GetPetById_WithoutAuth_Returns401()
     {
         var client = _factory.CreateClient();
 
         var response = await client.GetAsync("/api/pets/nonexistent-id");
 
-        // Should get 404 or 500 depending on service behavior, not 401
-        response.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        // Endpoint now requires auth at class level
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

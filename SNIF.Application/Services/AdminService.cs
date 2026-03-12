@@ -598,13 +598,24 @@ namespace SNIF.Busniess.Services
 
             var mrr = totalGoodBoy * 4.99m + totalAlphaPack * 9.99m;
 
+            // Churn rate: subscriptions cancelled this month / active at start of month × 100
+            var firstOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var cancelledThisMonth = await _context.Subscriptions
+                .CountAsync(s => s.Status == SubscriptionStatus.Canceled && s.UpdatedAt >= firstOfMonth);
+            var activeAtStartOfMonth = await _context.Subscriptions
+                .CountAsync(s => s.CreatedAt < firstOfMonth && (s.Status == SubscriptionStatus.Active || (s.Status == SubscriptionStatus.Canceled && s.UpdatedAt >= firstOfMonth)));
+            var churnRate = activeAtStartOfMonth > 0
+                ? Math.Round((decimal)cancelledThisMonth / activeAtStartOfMonth * 100, 2)
+                : 0m;
+
             return new AdminSubscriptionStatsDto
             {
                 TotalFree = totalFree,
                 TotalGoodBoy = totalGoodBoy,
                 TotalAlphaPack = totalAlphaPack,
                 TotalTreatBag = totalTreatBag,
-                Mrr = mrr
+                Mrr = mrr,
+                ChurnRate = churnRate
             };
         }
 
@@ -703,6 +714,54 @@ namespace SNIF.Busniess.Services
                 Revenue = m.GoodBoy * 4.99m + m.AlphaPack * 9.99m,
                 Subscriptions = m.Count
             }).ToList();
+        }
+
+        public async Task<PagedResult<AdminPaymentTransactionDto>> GetPaymentTransactionsAsync(PaymentFilterDto filter)
+        {
+            var page = Math.Max(1, filter.Page);
+            var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+
+            var query = _context.PaymentTransactions.AsQueryable();
+
+            if (!string.IsNullOrEmpty(filter.EventName))
+                query = query.Where(p => p.EventName == filter.EventName);
+            if (!string.IsNullOrEmpty(filter.UserId))
+                query = query.Where(p => p.UserId == filter.UserId);
+            if (!string.IsNullOrEmpty(filter.ProductType))
+                query = query.Where(p => p.ProductType == filter.ProductType);
+
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+            var items = await query
+                .OrderByDescending(p => p.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new AdminPaymentTransactionDto
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    UserEmail = p.UserId != null ? _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Email).FirstOrDefault() : null,
+                    EventName = p.EventName,
+                    ProviderOrderId = p.ProviderOrderId,
+                    ProviderSubscriptionId = p.ProviderSubscriptionId,
+                    AmountCents = p.AmountCents,
+                    Currency = p.Currency,
+                    Status = p.Status,
+                    PlanName = p.PlanName,
+                    ProductType = p.ProductType,
+                    CreatedAt = p.CreatedAt
+                })
+                .ToListAsync();
+
+            return new PagedResult<AdminPaymentTransactionDto>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = totalPages
+            };
         }
     }
 }

@@ -57,6 +57,14 @@ namespace SNIF.Core.DTOs
 
     public class LsCheckoutCustomData
     {
+        [JsonPropertyName("email")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Email { get; set; }
+
+        [JsonPropertyName("name")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Name { get; set; }
+
         [JsonPropertyName("custom")]
         public Dictionary<string, string> Custom { get; set; } = new();
     }

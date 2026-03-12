@@ -52,6 +52,7 @@ public class LemonSqueezyWebhookHandlerTests
     {
         return new LemonSqueezyWebhookHandler(
             _subscriptionServiceMock.Object,
+            Mock.Of<IBoostService>(),
             context,
             Options.Create(_options),
             _loggerMock.Object);

@@ -116,6 +116,7 @@ namespace SNIF.API.Controllers
         }
 
         // GET api/users/{id}
+        [Authorize]
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -185,6 +186,7 @@ namespace SNIF.API.Controllers
 
 
         // GET api/users/{id}/picture
+        [Authorize]
         [HttpGet("{id}/picture")]
         [ProducesResponseType(typeof(PhysicalFileResult), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]

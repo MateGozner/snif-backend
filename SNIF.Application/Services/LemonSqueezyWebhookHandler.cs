@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SNIF.Core.Configuration;
 using SNIF.Core.DTOs;
+using SNIF.Core.Entities;
 using SNIF.Core.Enums;
 using SNIF.Core.Interfaces;
 using SNIF.Infrastructure.Data;
@@ -19,6 +20,7 @@ namespace SNIF.Busniess.Services
         };
 
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IBoostService _boostService;
         private readonly SNIFContext _context;
         private readonly LemonSqueezyOptions _options;
         private readonly ILogger<LemonSqueezyWebhookHandler> _logger;
@@ -26,11 +28,13 @@ namespace SNIF.Busniess.Services
 
         public LemonSqueezyWebhookHandler(
             ISubscriptionService subscriptionService,
+            IBoostService boostService,
             SNIFContext context,
             IOptions<LemonSqueezyOptions> options,
             ILogger<LemonSqueezyWebhookHandler> logger)
         {
             _subscriptionService = subscriptionService;
+            _boostService = boostService;
             _context = context;
             _options = options.Value;
             _logger = logger;
@@ -72,6 +76,9 @@ namespace SNIF.Busniess.Services
 
             _logger.LogInformation("Processing LS event {EventName} for data ID {DataId}",
                 payload.Meta.EventName, payload.Data.Id);
+
+            // Persist transaction record for admin audit trail
+            await LogTransactionAsync(payload);
 
             switch (payload.Meta.EventName)
             {
@@ -227,10 +234,35 @@ namespace SNIF.Busniess.Services
         {
             var userId = GetCustomDataValue(payload, "user_id");
             var type = GetCustomDataValue(payload, "type");
+
+            if (string.IsNullOrEmpty(userId))
+                return;
+
+            switch (type)
+            {
+                case "credit_purchase":
+                    await HandleCreditPurchaseOrder(payload, userId);
+                    break;
+                case "day_pass":
+                    await HandleDayPassOrder(payload, userId);
+                    break;
+                case null or "":
+                    // Legacy: treat as credit purchase if type is absent but amount is present
+                    var legacyAmount = GetCustomDataInt32(payload, "amount");
+                    if (legacyAmount.HasValue && legacyAmount.Value > 0)
+                        await HandleCreditPurchaseOrder(payload, userId);
+                    break;
+                default:
+                    _logger.LogInformation("Ignoring order_created with unknown type: {Type}", type);
+                    break;
+            }
+        }
+
+        private async Task HandleCreditPurchaseOrder(LsWebhookPayload payload, string userId)
+        {
             var claimedAmount = GetCustomDataInt32(payload, "amount");
 
-            if (type != "credit_purchase" || string.IsNullOrEmpty(userId) ||
-                !claimedAmount.HasValue || claimedAmount.Value <= 0)
+            if (!claimedAmount.HasValue || claimedAmount.Value <= 0)
                 return;
 
             // Validate variant_id → credit amount mapping (defense-in-depth)
@@ -260,6 +292,35 @@ namespace SNIF.Busniess.Services
             }
 
             await _context.SaveChangesAsync();
+        }
+
+        private async Task HandleDayPassOrder(LsWebhookPayload payload, string userId)
+        {
+            var boostTypeStr = GetCustomDataValue(payload, "boost_type");
+            var durationStr = GetCustomDataValue(payload, "duration_days");
+            var orderId = payload.Data.Id;
+
+            if (string.IsNullOrEmpty(boostTypeStr) || string.IsNullOrEmpty(durationStr))
+            {
+                _logger.LogWarning("day_pass order_created missing boost_type or duration_days in custom_data");
+                return;
+            }
+
+            if (!Enum.TryParse<Core.Enums.BoostType>(boostTypeStr, out var boostType))
+            {
+                _logger.LogWarning("Invalid boost_type value: {BoostType}", boostTypeStr);
+                return;
+            }
+
+            if (!int.TryParse(durationStr, out var durationDays) || durationDays < 1 || durationDays > 7)
+            {
+                _logger.LogWarning("Invalid duration_days value: {Duration}", durationStr);
+                return;
+            }
+
+            await _boostService.ActivateFromOrder(userId, boostType, durationDays, orderId);
+            _logger.LogInformation("Day pass activated for user {UserId}: {BoostType} for {Days} days (order {OrderId})",
+                userId, boostType, durationDays, orderId);
         }
 
         /// <summary>
@@ -419,5 +480,50 @@ namespace SNIF.Busniess.Services
 
         private static string Truncate(string value, int maxLength) =>
             value.Length <= maxLength ? value : value[..maxLength];
+
+        private async Task LogTransactionAsync(LsWebhookPayload payload)
+        {
+            try
+            {
+                var userId = GetCustomDataValue(payload, "user_id");
+                var type = GetCustomDataValue(payload, "type");
+                var plan = GetCustomDataValue(payload, "plan");
+                var subscriptionId = ResolveSubscriptionProviderId(payload);
+                var customerId = GetAttributeValue(payload.Data.Attributes.CustomerId);
+
+                decimal? amountCents = null;
+                if (payload.Data.Attributes.Total is JsonElement totalEl)
+                {
+                    if (totalEl.ValueKind == JsonValueKind.Number && totalEl.TryGetDecimal(out var amt))
+                        amountCents = amt;
+                    else if (totalEl.ValueKind == JsonValueKind.String && decimal.TryParse(totalEl.GetString(), out var amtStr))
+                        amountCents = amtStr;
+                }
+
+                var transaction = new PaymentTransaction
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    UserId = userId,
+                    EventName = payload.Meta.EventName,
+                    ProviderOrderId = payload.Data.Id,
+                    ProviderSubscriptionId = subscriptionId,
+                    ProviderCustomerId = customerId,
+                    AmountCents = amountCents,
+                    Currency = "USD",
+                    Status = payload.Data.Attributes.Status,
+                    PlanName = plan,
+                    ProductType = type ?? (payload.Meta.EventName.StartsWith("subscription") ? "subscription" : "order"),
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.PaymentTransactions.Add(transaction);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to log payment transaction for event {EventName}", payload.Meta.EventName);
+            }
+        }
     }
 }

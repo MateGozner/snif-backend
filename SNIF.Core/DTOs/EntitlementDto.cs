@@ -1,5 +1,6 @@
 using SNIF.Core.Enums;
 using SNIF.Core.Models;
+using System.Collections.Generic;
 
 namespace SNIF.Core.DTOs
 {
@@ -29,5 +30,6 @@ namespace SNIF.Core.DTOs
         public bool IsOverPetLimit { get; init; }
         public IReadOnlyCollection<string> LockedPetIds { get; init; } = Array.Empty<string>();
         public IReadOnlyCollection<PetEntitlementStateDto> PetStates { get; init; } = Array.Empty<PetEntitlementStateDto>();
+        public IReadOnlyCollection<BoostDto> ActiveBoosts { get; init; } = Array.Empty<BoostDto>();
     }
 }

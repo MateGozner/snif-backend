@@ -150,6 +150,32 @@ namespace SNIF.Core.DTOs
         public int TotalAlphaPack { get; init; }
         public int TotalTreatBag { get; init; }
         public decimal Mrr { get; init; }
+        public decimal ChurnRate { get; init; }
+    }
+
+    public record AdminPaymentTransactionDto
+    {
+        public string Id { get; init; } = null!;
+        public string? UserId { get; init; }
+        public string? UserEmail { get; init; }
+        public string EventName { get; init; } = null!;
+        public string? ProviderOrderId { get; init; }
+        public string? ProviderSubscriptionId { get; init; }
+        public decimal? AmountCents { get; init; }
+        public string? Currency { get; init; }
+        public string? Status { get; init; }
+        public string? PlanName { get; init; }
+        public string? ProductType { get; init; }
+        public DateTime CreatedAt { get; init; }
+    }
+
+    public record PaymentFilterDto
+    {
+        public string? EventName { get; init; }
+        public string? UserId { get; init; }
+        public string? ProductType { get; init; }
+        public int Page { get; init; } = 1;
+        public int PageSize { get; init; } = 20;
     }
 
     public record SystemHealthDto

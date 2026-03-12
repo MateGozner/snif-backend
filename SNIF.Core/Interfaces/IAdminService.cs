@@ -28,6 +28,9 @@ namespace SNIF.Core.Interfaces
         // Revenue
         Task<List<RevenueDataPointDto>> GetRevenueAsync();
 
+        // Payments
+        Task<PagedResult<AdminPaymentTransactionDto>> GetPaymentTransactionsAsync(PaymentFilterDto filter);
+
         // System Health
         Task<SystemHealthDto> GetSystemHealthAsync();
     }

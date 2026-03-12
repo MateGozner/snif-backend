@@ -459,6 +459,7 @@ public class LemonSqueezyPaymentServiceTests
         var subscriptionService = new SubscriptionService(context);
         var webhookHandler = new LemonSqueezyWebhookHandler(
             Mock.Of<ISubscriptionService>(),
+            Mock.Of<IBoostService>(),
             context,
             Microsoft.Extensions.Options.Options.Create(options),
             Mock.Of<ILogger<LemonSqueezyWebhookHandler>>());

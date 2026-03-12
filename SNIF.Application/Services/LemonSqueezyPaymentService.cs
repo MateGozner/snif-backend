@@ -45,7 +45,8 @@ namespace SNIF.Busniess.Services
                 ["billing_interval"] = dto.BillingInterval.ToString()
             };
 
-            return await _client.CreateCheckout(variantId, customData, dto.SuccessUrl);
+            var user = await _context.Users.FindAsync(userId);
+            return await _client.CreateCheckout(variantId, customData, dto.SuccessUrl, user?.Email, user?.Name);
         }
 
         public async Task<string> CreateCreditPurchaseSession(string userId, PurchaseCreditsDto dto)
@@ -68,7 +69,8 @@ namespace SNIF.Busniess.Services
                 ["amount"] = dto.Amount.ToString()
             };
 
-            return await _client.CreateCheckout(variantId, customData, dto.SuccessUrl);
+            var user = await _context.Users.FindAsync(userId);
+            return await _client.CreateCheckout(variantId, customData, dto.SuccessUrl, user?.Email, user?.Name);
         }
 
         public Task<string> CreatePortalSession(string userId)
@@ -259,6 +261,41 @@ namespace SNIF.Busniess.Services
 
             if (string.IsNullOrEmpty(variantId))
                 throw new InvalidOperationException($"Variant ID not configured for {plan}/{interval}");
+
+            return variantId;
+        }
+
+        public async Task<string> CreateDayPassCheckoutSession(string userId, CreateDayPassCheckoutDto dto)
+        {
+            var variantId = GetDayPassVariantId(dto.BoostType, dto.DurationDays);
+
+            var customData = new Dictionary<string, string>
+            {
+                ["user_id"] = userId,
+                ["type"] = "day_pass",
+                ["boost_type"] = dto.BoostType.ToString(),
+                ["duration_days"] = dto.DurationDays.ToString()
+            };
+
+            var user = await _context.Users.FindAsync(userId);
+            return await _client.CreateCheckout(variantId, customData, dto.SuccessUrl, user?.Email, user?.Name);
+        }
+
+        private string GetDayPassVariantId(BoostType boostType, int durationDays)
+        {
+            var variantId = (boostType, durationDays) switch
+            {
+                (BoostType.Radius50, 1) => _options.Variants.DayPassRadius50_1,
+                (BoostType.Radius50, 3) => _options.Variants.DayPassRadius50_3,
+                (BoostType.Radius50, 7) => _options.Variants.DayPassRadius50_7,
+                (BoostType.VideoChat, 1) => _options.Variants.DayPassVideoChat_1,
+                (BoostType.VideoChat, 3) => _options.Variants.DayPassVideoChat_3,
+                (BoostType.VideoChat, 7) => _options.Variants.DayPassVideoChat_7,
+                _ => throw new InvalidOperationException($"No variant for day pass: {boostType}, {durationDays} days")
+            };
+
+            if (string.IsNullOrEmpty(variantId))
+                throw new InvalidOperationException($"Day pass variant ID not configured for {boostType}/{durationDays}d");
 
             return variantId;
         }

@@ -18,7 +18,7 @@ namespace SNIF.SignalR.Hubs
         public override async Task OnConnectedAsync()
         {
             _logger.LogInformation($"Client Connected: {Context.ConnectionId}");
-            _logger.LogInformation($"User ID: {Context.User?.Identity?.Name}");
+            _logger.LogInformation($"User ID: {Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value}");
             await base.OnConnectedAsync();
         }
 
@@ -32,7 +32,7 @@ namespace SNIF.SignalR.Hubs
         {
             try
             {
-                var authenticatedUserId = Context.User?.Identity?.Name;
+                var authenticatedUserId = Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(authenticatedUserId) || authenticatedUserId != userId)
                 {
                     _logger.LogWarning("User {AuthUser} attempted to join group {GroupId}", authenticatedUserId, userId);

@@ -80,6 +80,7 @@ public static class ServiceExtensions
         services.AddHttpClient<LemonSqueezyClient>();
         services.AddScoped<LemonSqueezyWebhookHandler>();
         services.AddScoped<IPaymentService, LemonSqueezyPaymentService>();
+        services.AddScoped<IBoostService, BoostService>();
 
         // Validate LemonSqueezy configuration on startup
         var lsApiKey = config["LemonSqueezy:ApiKey"];

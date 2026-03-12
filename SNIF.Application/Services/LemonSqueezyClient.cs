@@ -38,7 +38,7 @@ namespace SNIF.Busniess.Services
             }
         }
 
-        public async Task<string> CreateCheckout(string variantId, Dictionary<string, string> customData, string? successUrl = null)
+        public async Task<string> CreateCheckout(string variantId, Dictionary<string, string> customData, string? successUrl = null, string? email = null, string? name = null)
         {
             EnsureConfigured();
 
@@ -65,7 +65,12 @@ namespace SNIF.Busniess.Services
                     Type = "checkouts",
                     Attributes = new LsCheckoutAttributes
                     {
-                        CheckoutData = new LsCheckoutCustomData { Custom = customData },
+                        CheckoutData = new LsCheckoutCustomData
+                        {
+                            Custom = customData,
+                            Email = email,
+                            Name = name
+                        },
                         ProductOptions = productOptions
                     },
                     Relationships = new LsCheckoutRelationships

@@ -151,14 +151,13 @@ public class UserServiceTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetUser_NonExistent_Returns404OrRateLimited()
+    public async Task GetUser_WithoutAuth_Returns401()
     {
         var client = _factory.CreateClient();
 
         var response = await client.GetAsync("/api/users/nonexistent-user-id-123");
 
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.NotFound, HttpStatusCode.TooManyRequests);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

@@ -463,4 +463,163 @@ public class AdminServiceTests
         result.SubscriptionSupport.DowngradeEffectiveAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(5), TimeSpan.FromMinutes(1));
         result.SubscriptionSupport.PaidButStillFree.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task GetSubscriptionStatsAsync_IncludesChurnRate()
+    {
+        using var context = CreateInMemoryContext();
+        var mockUserManager = CreateMockUserManager();
+        var paymentService = CreateMockPaymentService();
+
+        var firstOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // Active subscription created before this month
+        context.Subscriptions.Add(new Subscription
+        {
+            Id = "churn-active-1",
+            UserId = "user-churn-1",
+            PlanId = SubscriptionPlan.GoodBoy,
+            Status = SubscriptionStatus.Active,
+            CurrentPeriodStart = firstOfMonth.AddDays(-15),
+            CurrentPeriodEnd = firstOfMonth.AddDays(15),
+            CreatedAt = firstOfMonth.AddMonths(-2),
+            UpdatedAt = firstOfMonth.AddMonths(-1)
+        });
+
+        // Cancelled subscription this month (was active at start of month)
+        context.Subscriptions.Add(new Subscription
+        {
+            Id = "churn-cancelled-1",
+            UserId = "user-churn-2",
+            PlanId = SubscriptionPlan.GoodBoy,
+            Status = SubscriptionStatus.Canceled,
+            CurrentPeriodStart = firstOfMonth.AddDays(-15),
+            CurrentPeriodEnd = firstOfMonth.AddDays(15),
+            CreatedAt = firstOfMonth.AddMonths(-2),
+            UpdatedAt = firstOfMonth.AddDays(5) // Cancelled 5 days into current month
+        });
+
+        await context.SaveChangesAsync();
+
+        var service = new AdminService(
+            context,
+            mockUserManager.Object,
+            new EntitlementService(context),
+            paymentService.Object);
+
+        var stats = await service.GetSubscriptionStatsAsync();
+
+        stats.TotalGoodBoy.Should().Be(1);
+        // 1 cancelled this month / 2 active at start of month = 50%
+        stats.ChurnRate.Should().Be(50m);
+    }
+
+    [Fact]
+    public async Task GetSubscriptionStatsAsync_ZeroChurnWhenNoCancellations()
+    {
+        using var context = CreateInMemoryContext();
+        var mockUserManager = CreateMockUserManager();
+        var paymentService = CreateMockPaymentService();
+
+        context.Subscriptions.Add(new Subscription
+        {
+            Id = "no-churn-1",
+            UserId = "user-nochurn",
+            PlanId = SubscriptionPlan.AlphaPack,
+            Status = SubscriptionStatus.Active,
+            CurrentPeriodStart = DateTime.UtcNow.AddDays(-10),
+            CurrentPeriodEnd = DateTime.UtcNow.AddDays(20),
+            CreatedAt = DateTime.UtcNow.AddMonths(-3),
+            UpdatedAt = DateTime.UtcNow.AddMonths(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var service = new AdminService(
+            context,
+            mockUserManager.Object,
+            new EntitlementService(context),
+            paymentService.Object);
+
+        var stats = await service.GetSubscriptionStatsAsync();
+
+        stats.ChurnRate.Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task GetPaymentTransactionsAsync_ReturnsPagedResults()
+    {
+        using var context = CreateInMemoryContext();
+        var mockUserManager = CreateMockUserManager();
+        var paymentService = CreateMockPaymentService();
+
+        for (int i = 0; i < 5; i++)
+        {
+            context.PaymentTransactions.Add(new PaymentTransaction
+            {
+                Id = $"tx-{i}",
+                UserId = "user-pay-1",
+                EventName = "order_created",
+                ProviderOrderId = $"order-{i}",
+                AmountCents = 199,
+                Currency = "USD",
+                Status = "paid",
+                ProductType = "credit_purchase",
+                CreatedAt = DateTime.UtcNow.AddHours(-i),
+                UpdatedAt = DateTime.UtcNow.AddHours(-i)
+            });
+        }
+        await context.SaveChangesAsync();
+
+        var service = new AdminService(
+            context,
+            mockUserManager.Object,
+            new EntitlementService(context),
+            paymentService.Object);
+
+        var result = await service.GetPaymentTransactionsAsync(new PaymentFilterDto { Page = 1, PageSize = 3 });
+
+        result.Items.Should().HaveCount(3);
+        result.TotalCount.Should().Be(5);
+        result.TotalPages.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetPaymentTransactionsAsync_FiltersOnEventName()
+    {
+        using var context = CreateInMemoryContext();
+        var mockUserManager = CreateMockUserManager();
+        var paymentService = CreateMockPaymentService();
+
+        context.PaymentTransactions.Add(new PaymentTransaction
+        {
+            Id = "tx-sub",
+            UserId = "u1",
+            EventName = "subscription_created",
+            ProductType = "subscription",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        context.PaymentTransactions.Add(new PaymentTransaction
+        {
+            Id = "tx-order",
+            UserId = "u2",
+            EventName = "order_created",
+            ProductType = "credit_purchase",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var service = new AdminService(
+            context,
+            mockUserManager.Object,
+            new EntitlementService(context),
+            paymentService.Object);
+
+        var result = await service.GetPaymentTransactionsAsync(
+            new PaymentFilterDto { EventName = "order_created" });
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].EventName.Should().Be("order_created");
+    }
 }

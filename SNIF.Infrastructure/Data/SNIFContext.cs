@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SNIF.Core.Entities;
+using SNIF.Core.Enums;
 using SNIF.Core.Models;
 
 namespace SNIF.Infrastructure.Data
@@ -28,6 +29,8 @@ namespace SNIF.Infrastructure.Data
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
         public DbSet<VideoCall> VideoCalls => Set<VideoCall>();
+        public DbSet<UserBoost> UserBoosts => Set<UserBoost>();
+        public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -306,6 +309,25 @@ namespace SNIF.Infrastructure.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 b.HasIndex(v => v.MatchId);
+            });
+
+            // UserBoost
+            builder.Entity<UserBoost>(b =>
+            {
+                b.HasKey(x => x.Id);
+
+                b.HasOne(ub => ub.User)
+                    .WithMany()
+                    .HasForeignKey(ub => ub.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                b.Property(ub => ub.BoostType).HasConversion<string>();
+                b.Property(ub => ub.Source).HasConversion<string>();
+
+                b.HasIndex(ub => new { ub.UserId, ub.BoostType, ub.ExpiresAt });
+                b.HasIndex(ub => ub.LemonSqueezyOrderId)
+                    .IsUnique()
+                    .HasFilter("\"LemonSqueezyOrderId\" IS NOT NULL");
             });
         }
     }

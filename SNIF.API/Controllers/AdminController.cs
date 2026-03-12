@@ -10,6 +10,7 @@ namespace SNIF.API.Controllers
     [ApiController]
     [Route("api/admin")]
     [EnableRateLimiting("global")]
+    [Authorize(Roles = "Admin")]
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
@@ -140,6 +141,14 @@ namespace SNIF.API.Controllers
         {
             var revenue = await _adminService.GetRevenueAsync();
             return Ok(revenue);
+        }
+
+        [HttpGet("payments")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> GetPayments([FromQuery] PaymentFilterDto filter)
+        {
+            var payments = await _adminService.GetPaymentTransactionsAsync(filter);
+            return Ok(payments);
         }
 
         [HttpGet("stats")]

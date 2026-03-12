@@ -16,6 +16,7 @@ namespace SNIF.API.Controllers
     [ApiController]
     [Route("api/pets")]
     [EnableRateLimiting("global")]
+    [Authorize]
     public class PetController : ControllerBase
     {
         private readonly IPetService _petService;
