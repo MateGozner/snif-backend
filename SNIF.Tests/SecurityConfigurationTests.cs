@@ -83,4 +83,30 @@ public class SecurityConfigurationTests
 
         act.Should().NotThrow();
     }
+
+    [Fact]
+    public void GoogleClientIdValidator_MissingClientIds_ThrowsWhenRequired()
+    {
+        var act = () => GoogleClientIdValidator.GetValidatedClientIds(
+            webClientId: null,
+            iosClientId: null,
+            androidClientId: null,
+            requireAtLeastOneClientId: true);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Google OAuth client IDs are missing*");
+    }
+
+    [Fact]
+    public void GoogleClientIdValidator_ConfiguredWebClientId_ReturnsTrimmedValue()
+    {
+        var clientIds = GoogleClientIdValidator.GetValidatedClientIds(
+            webClientId: "  test-web-client-id  ",
+            iosClientId: null,
+            androidClientId: null,
+            requireAtLeastOneClientId: true);
+
+        clientIds.Should().ContainSingle()
+            .Which.Should().Be("test-web-client-id");
+    }
 }

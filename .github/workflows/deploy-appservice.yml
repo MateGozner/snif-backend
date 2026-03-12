@@ -45,6 +45,9 @@ jobs:
       - name: Build
         run: dotnet build SNIF.sln -c Release --no-restore
 
+      - name: Run tests
+        run: dotnet test SNIF.sln --no-build --configuration Release --verbosity normal
+
       - name: Publish
         run: dotnet publish ./SNIF.API/SNIF.API.csproj -c Release -o ./publish
 

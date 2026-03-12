@@ -8,6 +8,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using System.Text.Json;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using SNIF.Core.Configuration;
 
 static bool IsLoopbackOrigin(string origin)
 {
@@ -15,6 +16,12 @@ static bool IsLoopbackOrigin(string origin)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+GoogleClientIdValidator.GetValidatedClientIds(
+    builder.Configuration["Google:ClientId"],
+    builder.Configuration["Google:ClientIdIos"],
+    builder.Configuration["Google:ClientIdAndroid"],
+    requireAtLeastOneClientId: !builder.Environment.IsEnvironment("Test"));
 
 // Defense-in-depth: global request body size limit (30 MB)
 builder.WebHost.ConfigureKestrel(options =>
