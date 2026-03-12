@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SNIF.Infrastructure.Data;
 
 namespace SNIF.Tests;
@@ -68,7 +69,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             });
 
             // Re-add basic health checks without external dependencies
-            services.AddHealthChecks();
+            services.AddHealthChecks()
+                .AddCheck("database", () =>
+                    HealthCheckResult.Healthy("In-memory test database"));
         });
     }
 }
